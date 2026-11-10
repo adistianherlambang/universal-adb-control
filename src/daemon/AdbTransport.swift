@@ -137,6 +137,13 @@ public final class AdbTransport {
         try? killTask.run()
         killTask.waitUntilExit()
 
+        // Sembunyikan on-screen keyboard saat physical/UHID keyboard aktif
+        let imeTask = Process()
+        imeTask.launchPath = config.adbPath
+        imeTask.arguments = ["-s", serial, "shell", "settings put secure show_ime_with_hard_keyboard 0"]
+        try? imeTask.run()
+        imeTask.waitUntilExit()
+
         // Setup ADB port forwarding to Android TCP server
         let fwdTask = Process()
         fwdTask.launchPath = config.adbPath

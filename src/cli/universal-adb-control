@@ -106,6 +106,15 @@ cmd_start() {
     fi
     launchctl unload "$PLIST_PATH" 2>/dev/null || true
     launchctl load "$PLIST_PATH"
+    
+    # Sembunyikan on-screen keyboard saat physical/UHID keyboard aktif di perangkat terhubung
+    ADB_BIN="/opt/homebrew/bin/adb"
+    if [ -x "$ADB_BIN" ]; then
+        for d in $($ADB_BIN devices 2>/dev/null | grep "device$" | awk '{print $1}'); do
+            $ADB_BIN -s "$d" shell "settings put secure show_ime_with_hard_keyboard 0" 2>/dev/null || true
+        done
+    fi
+    
     echo "Service started."
 }
 

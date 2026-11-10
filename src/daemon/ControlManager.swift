@@ -81,6 +81,15 @@ public final class ControlManager {
         executeAppleScript(appleScript)
     }
     
+    private func disableOnScreenKeyboard(serial: String) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: adbBin)
+        p.arguments = ["-s", serial, "shell", "settings put secure show_ime_with_hard_keyboard 0"]
+        try? p.run()
+        p.waitUntilExit()
+        Logger.shared.log("Disabled on-screen keyboard for device: \(serial)")
+    }
+    
     private func executeAppleScript(_ source: String) {
         if let script = NSAppleScript(source: source) {
             var errorInfo: NSDictionary?
@@ -140,6 +149,11 @@ public final class ControlManager {
         
         lastFrontmostApp = NSWorkspace.shared.frontmostApplication
         savedMousePos = CGEvent(source: nil)?.location
+        
+        // Pastikan keyboard virtual di Android disembunyikan saat hardware keyboard terhubung
+        if let serial = getConnectedAdbDevices().first(where: { $0.state == "device" })?.serial {
+            disableOnScreenKeyboard(serial: serial)
+        }
         
         let script = """
         tell application "System Events"
@@ -208,6 +222,9 @@ public final class ControlManager {
         
         isLaunching = true
         showNotification(title: "Universal ADB Control", message: "Menghubungkan (\(targetSerial))...")
+        
+        // Sembunyikan keyboard virtual (IME) di layar Android agar tidak menutupi tampilan
+        disableOnScreenKeyboard(serial: targetSerial)
         
         lastFrontmostApp = NSWorkspace.shared.frontmostApplication
         savedMousePos = CGEvent(source: nil)?.location

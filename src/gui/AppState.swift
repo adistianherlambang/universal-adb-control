@@ -228,6 +228,9 @@ public class AppState: ObservableObject {
                     return
                 }
                 
+                // Matikan keyboard virtual di layar Android
+                _ = self.runShell("\(self.adbPath) -s \(target) shell settings put secure show_ime_with_hard_keyboard 0")
+                
                 let args = "-s \(target) --fullscreen --stay-awake --shortcut-mod=rctrl --no-audio --video-codec=\(self.videoCodec) --video-bit-rate=\(self.videoBitrate) --max-size=\(self.maxSize) --max-fps=\(self.maxFps) --video-buffer=\(self.videoBufferMs) --keyboard=uhid --mouse=uhid --window-title=UniversalADBControl"
                 _ = self.runShell("nohup scrcpy \(args) > /dev/null 2>&1 &")
                 DispatchQueue.main.async {
