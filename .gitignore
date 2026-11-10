@@ -2,6 +2,5 @@
 *.swp
 *.o
 build/
-bin/universal-adb-control-daemon
-bin/UniversalADBControlGUI
+bin/
 temp/
