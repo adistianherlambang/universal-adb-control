@@ -66,6 +66,9 @@ universal-adb-control restart
 
 # Memantau log aktivitas
 universal-adb-control logs
+
+# Membuka aplikasi GUI
+universal-adb-control gui
 ```
 
 ### 3. Pintasan Global Kontrol Layar Penuh

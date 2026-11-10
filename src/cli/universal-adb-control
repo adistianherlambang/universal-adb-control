@@ -42,9 +42,12 @@ cmd_install() {
     fi
 
     # Copy daemon binary
-    SCRATCH_BIN="/Users/aaaa/.gemini/antigravity/scratch/universal-adb-control/bin/universal-adb-control-daemon"
-    if [ -f "$SCRATCH_BIN" ]; then
-        cp "$SCRATCH_BIN" "$DAEMON_BIN"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    REPO_BIN="$SCRIPT_DIR/../../bin/universal-adb-control-daemon"
+    if [ -f "$REPO_BIN" ]; then
+        cp "$REPO_BIN" "$DAEMON_BIN"
+    elif [ -f "./bin/universal-adb-control-daemon" ]; then
+        cp "./bin/universal-adb-control-daemon" "$DAEMON_BIN"
     fi
     chmod +x "$DAEMON_BIN"
 
@@ -166,12 +169,25 @@ cmd_status() {
         echo "NOT RUNNING"
     fi
 
-    echo "Shortcut Kontrol: Cmd + Option + T (Mouse & Keyboard via scrcpy)"
+    echo "Shortcut Kontrol: Cmd + Option + T (Mouse & Keyboard Universal Control)"
     echo "Universal Copy : ALWAYS ON (Realtime Clipboard Sync)"
 
     if [ -f "$STATUS_FILE" ]; then
         echo "Status Terakhir:"
         cat "$STATUS_FILE" | python3 -m json.tool 2>/dev/null || cat "$STATUS_FILE"
+    fi
+}
+
+cmd_gui() {
+    echo "Membuka antarmuka Universal ADB Control GUI..."
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    APP_PATH="$SCRIPT_DIR/../../bin/Universal ADB Control.app"
+    if [ -d "$APP_PATH" ]; then
+        open "$APP_PATH"
+    elif [ -d "/Applications/Universal ADB Control.app" ]; then
+        open "/Applications/Universal ADB Control.app"
+    else
+        open -a "Universal ADB Control" 2>/dev/null || echo "Aplikasi GUI belum di-bundle. Jalankan ./bundle_app.sh terlebih dahulu."
     fi
 }
 
@@ -217,6 +233,9 @@ case "$1" in
     devices)
         cmd_devices
         ;;
+    gui)
+        cmd_gui
+        ;;
     logs)
         cmd_logs
         ;;
@@ -224,7 +243,7 @@ case "$1" in
         cmd_uninstall
         ;;
     *)
-        echo "Usage: universal-adb-control {install|start|stop|restart|status|devices|logs|uninstall}"
+        echo "Usage: universal-adb-control {install|start|stop|restart|status|devices|gui|logs|uninstall}"
         exit 1
         ;;
 esac
