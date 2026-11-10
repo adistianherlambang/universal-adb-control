@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+# Universal ADB Control CLI Manager
+
+set -e
+
+INSTALL_DIR="$HOME/.universal-adb-control"
+BIN_DIR="$INSTALL_DIR/bin"
+PLIST_LABEL="com.universal.adb.control.daemon"
+PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
+DAEMON_BIN="$BIN_DIR/universal-adb-control-daemon"
+AGENT_DEX="$INSTALL_DIR/classes.dex"
+CONF_FILE="$INSTALL_DIR/config.conf"
+LOG_FILE="$INSTALL_DIR/daemon.log"
+STATUS_FILE="$INSTALL_DIR/status.json"
+
+OLD_PLIST="$HOME/Library/LaunchAgents/com.universal.clipboard.daemon.plist"
+OLD_DIR="$HOME/.universal-clipboard"
+
+ensure_dirs() {
+    mkdir -p "$INSTALL_DIR" "$BIN_DIR" "$INSTALL_DIR/temp" "$HOME/Library/LaunchAgents" "$HOME/.local/bin"
+}
+
+cmd_install() {
+    echo "=== Installing Universal ADB Control ==="
+    ensure_dirs
+
+    # Unload and disable old universal-clipboard if running
+    if [ -f "$OLD_PLIST" ]; then
+        echo "Unloading previous universal-clipboard service..."
+        launchctl unload "$OLD_PLIST" 2>/dev/null || true
+        rm -f "$OLD_PLIST"
+    fi
+    pkill -f "universal-clipboard-daemon" 2>/dev/null || true
+
+    # Copy agent dex
+    if [ -f "$INSTALL_DIR/classes.dex" ]; then
+        :
+    elif [ -f "$OLD_DIR/classes.dex" ]; then
+        cp "$OLD_DIR/classes.dex" "$AGENT_DEX"
+    elif [ -f "/tmp/recovered_sources/classes.dex" ]; then
+        cp "/tmp/recovered_sources/classes.dex" "$AGENT_DEX"
+    fi
+
+    # Copy daemon binary
+    SCRATCH_BIN="/Users/aaaa/.gemini/antigravity/scratch/universal-adb-control/bin/universal-adb-control-daemon"
+    if [ -f "$SCRATCH_BIN" ]; then
+        cp "$SCRATCH_BIN" "$DAEMON_BIN"
+    fi
+    chmod +x "$DAEMON_BIN"
+
+    # Migrate or set config
+    if [ ! -f "$CONF_FILE" ]; then
+        if [ -f "$OLD_DIR/config.conf" ]; then
+            cp "$OLD_DIR/config.conf" "$CONF_FILE"
+        else
+            cat << 'EOF' > "$CONF_FILE"
+# Universal ADB Control Configuration
+ADB=/opt/homebrew/bin/adb
+DEVICE=
+SYNC_INTERVAL_MS=300
+EOF
+        fi
+    fi
+
+    # Generate LaunchAgent plist
+    cat << EOF > "$PLIST_PATH"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${PLIST_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${DAEMON_BIN}</string>
+        <string>${AGENT_DEX}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>${INSTALL_DIR}/daemon.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>${INSTALL_DIR}/daemon.stderr.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${HOME}/Library/Android/sdk/platform-tools</string>
+    </dict>
+</dict>
+</plist>
+EOF
+
+    # Symlink CLI
+    ln -sf "$INSTALL_DIR/bin/universal-adb-control" "$HOME/.local/bin/universal-adb-control" 2>/dev/null || true
+
+    echo "Installed successfully to $INSTALL_DIR"
+    echo "LaunchAgent created at $PLIST_PATH"
+}
+
+cmd_start() {
+    echo "Starting Universal ADB Control service..."
+    if [ ! -f "$PLIST_PATH" ]; then
+        cmd_install
+    fi
+    launchctl unload "$PLIST_PATH" 2>/dev/null || true
+    launchctl load "$PLIST_PATH"
+    echo "Service started."
+}
+
+cmd_stop() {
+    echo "Stopping Universal ADB Control service..."
+    if [ -f "$PLIST_PATH" ]; then
+        launchctl unload "$PLIST_PATH" 2>/dev/null || true
+    fi
+    pkill -f "universal-adb-control-daemon" 2>/dev/null || true
+    pkill -f "universal-clipboard-daemon" 2>/dev/null || true
+    
+    ADB_BIN="/opt/homebrew/bin/adb"
+    if [ -x "$ADB_BIN" ]; then
+        $ADB_BIN shell "pkill -f clipboard_agent.dex" 2>/dev/null || true
+    fi
+    echo "Service stopped."
+}
+
+cmd_restart() {
+    cmd_stop
+    sleep 1
+    cmd_start
+}
+
+cmd_status() {
+    echo "=== Universal ADB Control Status ==="
+    DAEMON_PID=$(pgrep -f "universal-adb-control-daemon" | head -n 1 || true)
+    if [ -n "$DAEMON_PID" ]; then
+        echo "Daemon Mac     : RUNNING (PID: $DAEMON_PID)"
+    else
+        echo "Daemon Mac     : STOPPED"
+    fi
+
+    ADB_BIN="/opt/homebrew/bin/adb"
+    echo -n "Koneksi ADB    : "
+    DEVS=$($ADB_BIN devices 2>/dev/null | grep -E "device$|offline$|unauthorized$" || true)
+    if [ -n "$DEVS" ]; then
+        echo "TERHUBUNG"
+        echo "$DEVS" | sed 's/^/  - /'
+    else
+        echo "TIDAK TERHUBUNG"
+    fi
+
+    echo -n "Android Agent  : "
+    AGENT_RUNNING=$($ADB_BIN shell "pgrep -f clipboard_agent.dex" 2>/dev/null || true)
+    if [ -n "$AGENT_RUNNING" ]; then
+        echo "RUNNING on device (PID: $AGENT_RUNNING)"
+    else
+        echo "NOT RUNNING"
+    fi
+
+    echo "Shortcut Kontrol: Cmd + Option + T (Mouse & Keyboard via scrcpy)"
+    echo "Universal Copy : ALWAYS ON (Realtime Clipboard Sync)"
+
+    if [ -f "$STATUS_FILE" ]; then
+        echo "Status Terakhir:"
+        cat "$STATUS_FILE" | python3 -m json.tool 2>/dev/null || cat "$STATUS_FILE"
+    fi
+}
+
+cmd_devices() {
+    echo "=== Connected ADB Devices ==="
+    ADB_BIN="/opt/homebrew/bin/adb"
+    $ADB_BIN devices -l
+}
+
+cmd_logs() {
+    if [ -f "$LOG_FILE" ]; then
+        tail -n 40 -f "$LOG_FILE"
+    else
+        echo "Belum ada file log di $LOG_FILE"
+    fi
+}
+
+cmd_uninstall() {
+    echo "=== Uninstalling Universal ADB Control ==="
+    cmd_stop
+    rm -f "$PLIST_PATH"
+    rm -f "$HOME/.local/bin/universal-adb-control"
+    rm -rf "$INSTALL_DIR"
+    echo "Uninstalled completely."
+}
+
+case "$1" in
+    install)
+        cmd_install
+        ;;
+    start)
+        cmd_start
+        ;;
+    stop)
+        cmd_stop
+        ;;
+    restart)
+        cmd_restart
+        ;;
+    status)
+        cmd_status
+        ;;
+    devices)
+        cmd_devices
+        ;;
+    logs)
+        cmd_logs
+        ;;
+    uninstall)
+        cmd_uninstall
+        ;;
+    *)
+        echo "Usage: universal-adb-control {install|start|stop|restart|status|devices|logs|uninstall}"
+        exit 1
+        ;;
+esac
+

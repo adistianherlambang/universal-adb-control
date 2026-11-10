@@ -1,0 +1,7 @@
+.DS_Store
+*.swp
+*.o
+build/
+bin/universal-adb-control-daemon
+bin/UniversalADBControlGUI
+temp/
