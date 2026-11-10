@@ -70,9 +70,14 @@ public final class ControlManager {
         """
         try? plistContent.write(toFile: plistPath, atomically: true, encoding: .utf8)
         
-        if !fm.fileExists(atPath: execPath) || (try? fm.destinationOfSymbolicLink(atPath: execPath)) != scrcpyBin {
-            try? fm.removeItem(atPath: execPath)
-            try? fm.createSymbolicLink(atPath: execPath, withDestinationPath: scrcpyBin)
+        if !fm.fileExists(atPath: execPath) {
+            // Salin binary helper jika tersedia dari bundle atau bin
+            let bundleHelper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/UniversalADBControlDisplay.app/Contents/MacOS/UniversalADBControlDisplay").path
+            if fm.isExecutableFile(atPath: bundleHelper) {
+                try? fm.copyItem(atPath: bundleHelper, toPath: execPath)
+            } else {
+                try? fm.createSymbolicLink(atPath: execPath, withDestinationPath: scrcpyBin)
+            }
         }
         
         return execPath

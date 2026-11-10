@@ -47,9 +47,7 @@ cat << EOF > "${CONTENTS_DIR}/Info.plist"
 </plist>
 EOF
 
-# Menyiapkan UniversalADBControlDisplay helper bundle (pembungkus scrcpy)
-# Berstatus LSUIElement agar scrcpy TIDAK PERNAH muncul sebagai aplikasi terpisah di Dock
-SCRCPY_BIN="$(which scrcpy || echo "/opt/homebrew/bin/scrcpy")"
+# Menyiapkan UniversalADBControlDisplay helper bundle
 USER_HELPERS="$HOME/.universal-adb-control/helpers"
 mkdir -p "$USER_HELPERS"
 
@@ -77,13 +75,14 @@ setup_display_bundle() {
 </plist>
 EOF
     rm -f "${target_app}/Contents/MacOS/UniversalADBControlDisplay"
-    ln -sf "${SCRCPY_BIN}" "${target_app}/Contents/MacOS/UniversalADBControlDisplay"
+    cp bin/UniversalADBControlDisplay "${target_app}/Contents/MacOS/UniversalADBControlDisplay"
+    chmod +x "${target_app}/Contents/MacOS/UniversalADBControlDisplay"
 }
 
 setup_display_bundle "${HELPERS_DIR}/UniversalADBControlDisplay.app"
 setup_display_bundle "${USER_HELPERS}/UniversalADBControlDisplay.app"
 
-# Salin libUniversalControlFrame.dylib ke helpers
+# Salin libUniversalControlFrame.dylib ke helpers & frameworks
 cp bin/libUniversalControlFrame.dylib "${USER_HELPERS}/libUniversalControlFrame.dylib"
 mkdir -p "${CONTENTS_DIR}/Frameworks"
 cp bin/libUniversalControlFrame.dylib "${CONTENTS_DIR}/Frameworks/libUniversalControlFrame.dylib"

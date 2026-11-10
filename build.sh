@@ -7,7 +7,10 @@ cd "$DIR"
 mkdir -p bin
 
 echo "==> Mengompilasi Device Frame Overlay dylib..."
-clang -dynamiclib -O2 -framework Cocoa src/frame/DeviceFrameOverlay.m -o bin/libUniversalControlFrame.dylib
+clang -arch arm64 -arch arm64e -dynamiclib -O2 -framework Cocoa -framework CoreGraphics src/frame/DeviceFrameOverlay.m -o bin/libUniversalControlFrame.dylib
+
+echo "==> Mengompilasi UniversalADBControlDisplay helper binary..."
+clang -arch arm64 -arch arm64e -O2 src/helper/UniversalADBControlDisplay.c -o bin/UniversalADBControlDisplay
 
 echo "==> Mengompilasi universal-adb-control-daemon..."
 swiftc -O \
@@ -27,4 +30,3 @@ swiftc -O -parse-as-library \
     -o bin/UniversalADBControlGUI
 
 echo "==> Sukses! Binary tersedia di folder bin/"
-

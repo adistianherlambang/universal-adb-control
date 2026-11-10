@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 @available(macOS 11.0, *)
 struct MainView: View {
@@ -8,37 +9,47 @@ struct MainView: View {
     @State private var wifiPort: String = "5555"
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header Bar
-            headerBar
-            
-            Divider()
-            
-            // Tab Selection
-            tabSelector
-            
-            Divider()
-            
-            // Tab Content
-            Group {
-                if selectedTab == 0 {
-                    DashboardView(state: state)
-                } else if selectedTab == 1 {
-                    DevicesView(state: state, wifiIp: $wifiIp, wifiPort: $wifiPort)
-                } else if selectedTab == 2 {
-                    SettingsView(state: state)
-                } else {
-                    LogsView(state: state)
+        HStack(spacing: 0) {
+            // Sisi Kiri: Panel Pengaturan, Status & Layanan
+            VStack(spacing: 0) {
+                // Header Bar
+                headerBar
+                
+                Divider()
+                
+                // Tab Selection
+                tabSelector
+                
+                Divider()
+                
+                // Tab Content
+                Group {
+                    if selectedTab == 0 {
+                        DashboardView(state: state)
+                    } else if selectedTab == 1 {
+                        DevicesView(state: state, wifiIp: $wifiIp, wifiPort: $wifiPort)
+                    } else if selectedTab == 2 {
+                        SettingsView(state: state)
+                    } else {
+                        LogsView(state: state)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                
+                Divider()
+                
+                // Bottom Status Bar
+                statusBar
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minWidth: 580, maxWidth: .infinity)
             
             Divider()
             
-            // Bottom Status Bar
-            statusBar
+            // Sisi Kanan: Layar Android Terintegrasi (Mode Emulator)
+            EmulatorPaneView(state: state)
+                .frame(width: 400)
         }
-        .frame(width: 680, height: 500)
+        .frame(minWidth: 1020, minHeight: 700)
         .background(Color(NSColor.windowBackgroundColor))
         .alert(isPresented: $state.showAlert) {
             Alert(
@@ -56,28 +67,28 @@ struct MainView: View {
             Image(systemName: "ipad.and.iphone")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 26, height: 26)
+                .frame(width: 24, height: 24)
                 .foregroundColor(.accentColor)
             
             VStack(alignment: .leading, spacing: 2) {
                 Text("Universal ADB Control")
                     .font(.headline)
                     .fontWeight(.bold)
-                Text("Seamless Mouse, Keyboard & Clipboard Sync")
+                Text("Seamless Mouse, Keyboard & Unified Display")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
             
             Spacer()
             
-            // Quick Action: Scrcpy Control Button
+            // Tombol Kontrol Layar Terintegrasi
             Button(action: {
-                state.toggleScrcpyControl()
+                state.toggleDisplay()
             }) {
                 HStack(spacing: 6) {
                     Image(systemName: state.isScrcpyActive ? "stop.circle.fill" : "play.circle.fill")
                         .foregroundColor(state.isScrcpyActive ? .red : .green)
-                    Text(state.isScrcpyActive ? "Hentikan Kontrol" : "Mulai Kontrol (⌘⌥T)")
+                    Text(state.isScrcpyActive ? "Hentikan Layar" : "Mulai Kontrol (⌘⌥T)")
                         .fontWeight(.medium)
                 }
                 .padding(.horizontal, 10)
@@ -141,13 +152,261 @@ struct MainView: View {
             
             Spacer()
             
-            Text("Shortcut: ⌘ + ⌥ + T")
+            Text("Pintasan Keyboard: ⌘ + ⌥ + T")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(Color(NSColor.controlBackgroundColor).opacity(0.4))
+    }
+}
+
+// MARK: - Emulator Android Pane (Sisi Kanan)
+@available(macOS 11.0, *)
+struct EmulatorPaneView: View {
+    @ObservedObject var state: AppState
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            // Header Panel Emulator
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "iphone")
+                        .foregroundColor(.accentColor)
+                    Text("Emulator Android")
+                        .font(.headline)
+                        .fontWeight(.bold)
+                }
+                
+                Spacer()
+                
+                // Status Badge
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(state.isScrcpyActive ? Color.green : Color.orange)
+                        .frame(width: 7, height: 7)
+                    Text(state.isScrcpyActive ? "Aktif" : "Siaga")
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(10)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 14)
+            
+            // Bodi Ponsel Smartphone (Emulator Frame)
+            ZStack {
+                // Sasis Luar Bodi Ponsel
+                RoundedRectangle(cornerRadius: 36)
+                    .fill(Color(white: 0.10))
+                    .frame(width: 350, height: 576)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 36)
+                            .stroke(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [Color(white: 0.32), Color(white: 0.18), Color(white: 0.28)]),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 3.5
+                            )
+                    )
+                    .shadow(color: Color.black.opacity(0.35), radius: 10, x: 0, y: 5)
+                
+                VStack(spacing: 0) {
+                    // Bezel Atas: Speaker Grill & Punch-Hole Camera
+                    ZStack {
+                        // Speaker Ear-Piece
+                        RoundedRectangle(cornerRadius: 1.75)
+                            .fill(Color(white: 0.26))
+                            .frame(width: 44, height: 3.5)
+                            .offset(y: -8)
+                        
+                        // Punch-Hole Camera Tengah
+                        ZStack {
+                            Circle()
+                                .fill(Color(white: 0.22))
+                                .frame(width: 15, height: 15)
+                            Circle()
+                                .fill(Color.black)
+                                .frame(width: 12, height: 12)
+                            Circle()
+                                .fill(Color(white: 0.6).opacity(0.8))
+                                .frame(width: 3, height: 3)
+                                .offset(x: 2, y: -2)
+                        }
+                        .offset(y: 4)
+                    }
+                    .frame(width: 334, height: 28)
+                    
+                    // Area Layar HP
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color.black)
+                            .frame(width: 334, height: 494)
+                        
+                        if state.isScrcpyActive {
+                            // Kontainer Host Tampilan Layar yang Dihubungkan Langsung
+                            PhoneScreenHostView(state: state)
+                                .frame(width: 334, height: 494)
+                                .cornerRadius(20)
+                        } else {
+                            // Layar Standby Saat Belum Dihubungkan
+                            VStack(spacing: 12) {
+                                Spacer()
+                                
+                                Image(systemName: "antenna.radiowaves.left.and.right")
+                                    .font(.system(size: 36))
+                                    .foregroundColor(.accentColor)
+                                
+                                Text("Universal Control Siaga")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white)
+                                
+                                Text(state.connectedDevice == "-" ? "Hubungkan perangkat ADB" : state.connectedDevice)
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                                    .lineLimit(1)
+                                
+                                Button(action: {
+                                    state.startDisplay()
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "play.fill")
+                                        Text("Hubungkan Layar")
+                                    }
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 7)
+                                    .background(Color.accentColor)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(6)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .padding(.top, 4)
+                                
+                                Spacer()
+                            }
+                            .frame(width: 334, height: 494)
+                        }
+                    }
+                    .frame(width: 334, height: 494)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    
+                    // Chin Bawah: Tombol Navigasi Fisik Android
+                    HStack(spacing: 20) {
+                        Button(action: { state.sendBack() }) {
+                            Image(systemName: "arrow.backward")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(white: 0.65))
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("Kembali (Back)")
+                        
+                        Button(action: { state.sendHome() }) {
+                            Image(systemName: "circle")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(Color(white: 0.65))
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("Beranda (Home)")
+                        
+                        Button(action: { state.sendRecents() }) {
+                            Image(systemName: "square")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(white: 0.65))
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("Aplikasi Terkini (Recents)")
+                        
+                        Button(action: { state.sendPower() }) {
+                            Image(systemName: "power")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(white: 0.65))
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("Kunci Layar (Power)")
+                        
+                        Button(action: { state.sendVolumeDown() }) {
+                            Image(systemName: "speaker.minus.fill")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(Color(white: 0.65))
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("Volume Turun")
+                        
+                        Button(action: { state.sendVolumeUp() }) {
+                            Image(systemName: "speaker.plus.fill")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(Color(white: 0.65))
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("Volume Naik")
+                    }
+                    .frame(width: 334, height: 38)
+                }
+            }
+            .frame(width: 350, height: 576)
+            
+            // Catatan Pintasan Bawah
+            Text("Tekan ⌘⌥T untuk mengontrol langsung dengan mouse & keyboard")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.3))
+    }
+}
+
+// MARK: - Host Container NSView untuk Mengukur Koordinat Layar Piksel Tepat
+@available(macOS 11.0, *)
+struct PhoneScreenHostView: NSViewRepresentable {
+    @ObservedObject var state: AppState
+    
+    func makeNSView(context: Context) -> HostContainerNSView {
+        let view = HostContainerNSView()
+        view.onFrameChanged = { [weak state] rect in
+            state?.updateHostGeometry(rect: rect)
+        }
+        return view
+    }
+    
+    func updateNSView(_ nsView: HostContainerNSView, context: Context) {}
+}
+
+class HostContainerNSView: NSView {
+    var onFrameChanged: ((NSRect) -> Void)?
+    
+    override func layout() {
+        super.layout()
+        reportGeometry()
+    }
+    
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        reportGeometry()
+    }
+    
+    private func reportGeometry() {
+        if self.window != nil {
+            let rectInWindow = self.convert(self.bounds, to: nil)
+            onFrameChanged?(rectInWindow)
+        }
     }
 }
 
@@ -496,4 +755,3 @@ struct LogsView: View {
         .padding(16)
     }
 }
-

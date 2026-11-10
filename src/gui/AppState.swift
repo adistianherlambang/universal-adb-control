@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Cocoa
 
 public struct ServiceStatusData: Codable {
     public var running: Bool?
@@ -34,7 +35,7 @@ public class AppState: ObservableObject {
     @Published public var preferredDevice: String = ""
     @Published public var syncIntervalMs: String = "300"
     
-    // Konfigurasi performa streaming scrcpy Wi-Fi
+    // Konfigurasi performa streaming Wi-Fi
     @Published public var videoBitrate: String = "3M"
     @Published public var maxSize: String = "1280"
     @Published public var maxFps: String = "60"
@@ -45,13 +46,19 @@ public class AppState: ObservableObject {
     @Published public var alertMessage: String? = nil
     @Published public var showAlert: Bool = false
     
+    // Geometri kontainer layar Android terintegrasi (Embedded)
+    public var hostOffsetX: CGFloat = 693.0
+    public var hostOffsetY: CGFloat = 70.0
+    public var hostWidth: CGFloat = 334.0
+    public var hostHeight: CGFloat = 494.0
+    
     private var timer: Timer?
     
     public init() {
         loadConfig()
         refreshAll()
         
-        // Polling status every 2 seconds
+        // Polling status setiap 2 detik
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.refreshStatus()
         }
@@ -59,6 +66,20 @@ public class AppState: ObservableObject {
     
     deinit {
         timer?.invalidate()
+        stopDisplay()
+    }
+    
+    public func updateHostGeometry(rect: NSRect) {
+        if rect.size.width > 50 && rect.size.height > 50 {
+            self.hostOffsetX = rect.origin.x
+            self.hostOffsetY = rect.origin.y
+            self.hostWidth = rect.size.width
+            self.hostHeight = rect.size.height
+            
+            let json = "{\"offsetX\": \(rect.origin.x), \"offsetY\": \(rect.origin.y), \"width\": \(rect.size.width), \"height\": \(rect.size.height)}"
+            let path = ("~/.universal-adb-control/host_rect.json" as NSString).expandingTildeInPath
+            try? json.write(toFile: path, atomically: true, encoding: .utf8)
+        }
     }
     
     public func loadConfig() {
@@ -133,7 +154,7 @@ public class AppState: ObservableObject {
             self.daemonPid = json.pid
         }
         
-        // 2. Check process
+        // 2. Check process daemon
         let pids = runShell("pgrep -f universal-adb-control-daemon").trimmingCharacters(in: .whitespacesAndNewlines)
         if !pids.isEmpty {
             self.isDaemonRunning = true
@@ -145,9 +166,9 @@ public class AppState: ObservableObject {
             self.daemonPid = nil
         }
         
-        // 3. Check scrcpy running
-        let scrcpyPid = runShell("pgrep -f scrcpy").trimmingCharacters(in: .whitespacesAndNewlines)
-        self.isScrcpyActive = !scrcpyPid.isEmpty
+        // 3. Check display helper process
+        let displayPids = runShell("pgrep -f 'UniversalADBControlDisplay'").trimmingCharacters(in: .whitespacesAndNewlines)
+        self.isScrcpyActive = !displayPids.isEmpty
         
         // 4. Check agent on device
         let agentRunning = runShell("\(adbPath) shell 'pgrep -f clipboard_agent.dex'").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -210,44 +231,93 @@ public class AppState: ObservableObject {
         }
     }
     
+    // MARK: - Kontrol Layar Terintegrasi (Embedded Display)
+    
     public func toggleScrcpyControl() {
-        let isDisplayRunning = !runShell("pgrep -f 'UniversalADBControlDisplay|scrcpy'").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        
-        if isDisplayRunning {
-            // Sembunyikan dan alihkan ke Mac
-            let script = "osascript -e 'tell application \"System Events\" to set visible of (every process whose bundle identifier is \"com.universal.adb.control.display\" or name contains \"UniversalADBControlDisplay\" or name contains \"scrcpy\") to false'"
-            _ = runShell(script)
-            isScrcpyActive = false
-            notify(message: "Layar kontrol disembunyikan (kembali ke Mac).")
+        toggleDisplay()
+    }
+    
+    public func toggleDisplay() {
+        let isRunning = !runShell("pgrep -f 'UniversalADBControlDisplay'").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if isRunning {
+            stopDisplay()
         } else {
-            DispatchQueue.global(qos: .userInitiated).async {
-                let target = self.preferredDevice.isEmpty ? (self.adbDevices.first?.serial ?? "") : self.preferredDevice
-                guard !target.isEmpty else {
-                    DispatchQueue.main.async {
-                        self.notify(message: "Tidak ada perangkat terhubung untuk dikontrol")
+            startDisplay()
+        }
+    }
+    
+    public func startDisplay() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            var target = self.preferredDevice.isEmpty ? (self.adbDevices.first?.serial ?? "") : self.preferredDevice
+            
+            if target.isEmpty {
+                let output = self.runShell("\(self.adbPath) devices")
+                for line in output.components(separatedBy: .newlines) {
+                    let parts = line.split(separator: "\t", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespaces) }
+                    if parts.count == 2 && parts[1] == "device" {
+                        target = parts[0]
+                        break
                     }
-                    return
                 }
-                
-                // Matikan keyboard virtual di layar Android
-                _ = self.runShell("\(self.adbPath) -s \(target) shell settings put secure show_ime_with_hard_keyboard 0")
-                
-                let helperBin = ("~/.universal-adb-control/helpers/UniversalADBControlDisplay.app/Contents/MacOS/UniversalADBControlDisplay" as NSString).expandingTildeInPath
-                let exec = FileManager.default.isExecutableFile(atPath: helperBin) ? "\"\(helperBin)\"" : "scrcpy"
-                
-                let dylibPath = ("~/.universal-adb-control/helpers/libUniversalControlFrame.dylib" as NSString).expandingTildeInPath
-                let dyldExport = FileManager.default.fileExists(atPath: dylibPath) ? "export DYLD_INSERT_LIBRARIES=\"\(dylibPath)\"; " : ""
-                
-                let args = "-s \(target) --window-width=380 --window-height=820 --always-on-top --stay-awake --shortcut-mod=rctrl --no-audio --video-codec=\(self.videoCodec) --video-bit-rate=\(self.videoBitrate) --max-size=\(self.maxSize) --max-fps=\(self.maxFps) --video-buffer=\(self.videoBufferMs) --keyboard=uhid --mouse=uhid --window-title=\"Universal ADB Control\""
-                _ = self.runShell("export SDL_MAC_BACKGROUND_APP=1; \(dyldExport)nohup \(exec) \(args) > /dev/null 2>&1 &")
+            }
+            
+            guard !target.isEmpty else {
                 DispatchQueue.main.async {
-                    self.isScrcpyActive = true
-                    self.notify(message: "Mengontrol Android (\(target)) mode emulator. Tekan ⌘⌥T untuk kembali ke Mac.")
-                    self.refreshStatus()
+                    self.notify(message: "Tidak ada perangkat terhubung untuk dikontrol")
                 }
+                return
+            }
+            
+            // Sembunyikan keyboard virtual Android
+            _ = self.runShell("\(self.adbPath) -s \(target) shell settings put secure show_ime_with_hard_keyboard 0")
+            
+            let helperBin = ("~/.universal-adb-control/helpers/UniversalADBControlDisplay.app/Contents/MacOS/UniversalADBControlDisplay" as NSString).expandingTildeInPath
+            let exec = FileManager.default.isExecutableFile(atPath: helperBin) ? helperBin : "UniversalADBControlDisplay"
+            
+            let myPid = ProcessInfo.processInfo.processIdentifier
+            let dylibPath = ("~/.universal-adb-control/helpers/libUniversalControlFrame.dylib" as NSString).expandingTildeInPath
+            let dyldExport = FileManager.default.fileExists(atPath: dylibPath) ? "export DYLD_INSERT_LIBRARIES=\"\(dylibPath)\"; " : ""
+            
+            let envVars = "export SDL_MAC_BACKGROUND_APP=1; export UAC_PARENT_PID=\(myPid); export UAC_OFFSET_X=\(self.hostOffsetX); export UAC_OFFSET_Y=\(self.hostOffsetY); export UAC_WIDTH=\(self.hostWidth); export UAC_HEIGHT=\(self.hostHeight); \(dyldExport)"
+            
+            let args = "-s \(target) --window-width=\(Int(self.hostWidth)) --window-height=\(Int(self.hostHeight)) --stay-awake --shortcut-mod=rctrl --no-audio --video-codec=\(self.videoCodec) --video-bit-rate=\(self.videoBitrate) --max-size=\(self.maxSize) --max-fps=\(self.maxFps) --video-buffer=\(self.videoBufferMs) --keyboard=uhid --mouse=uhid --window-title=\"Universal ADB Control\""
+            
+            _ = self.runShell("\(envVars) nohup \"\(exec)\" \(args) > /dev/null 2>&1 &")
+            
+            DispatchQueue.main.async {
+                self.isScrcpyActive = true
+                self.notify(message: "Layar Android menyatu dalam aplikasi. Tekan ⌘⌥T untuk mengontrol langsung.")
+                self.refreshStatus()
             }
         }
     }
+    
+    public func stopDisplay() {
+        _ = runShell("pkill -f 'UniversalADBControlDisplay'")
+        DispatchQueue.main.async {
+            self.isScrcpyActive = false
+            self.notify(message: "Layar kontrol Android dihentikan.")
+            self.refreshStatus()
+        }
+    }
+    
+    // MARK: - Navigasi Hardware Android (ADB Key Events)
+    
+    public func sendKeyevent(_ keyCode: Int) {
+        let target = preferredDevice.isEmpty ? (adbDevices.first?.serial ?? "") : preferredDevice
+        guard !target.isEmpty else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            _ = self.runShell("\(self.adbPath) -s \(target) shell input keyevent \(keyCode)")
+        }
+    }
+    
+    public func sendBack() { sendKeyevent(4) }
+    public func sendHome() { sendKeyevent(3) }
+    public func sendRecents() { sendKeyevent(187) }
+    public func sendPower() { sendKeyevent(26) }
+    public func sendVolumeUp() { sendKeyevent(24) }
+    public func sendVolumeDown() { sendKeyevent(25) }
     
     public func connectWifi(ip: String, port: String) {
         guard !ip.isEmpty else { return }

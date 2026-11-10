@@ -7,12 +7,12 @@ Aplikasi kontrol nirkabel & kabel untuk mengendalikan HP Android dari Mac secara
 ## Fitur Utama
 
 - **GUI & Menu Bar macOS**: Antarmuka native SwiftUI/AppKit modern dengan kontrol status bar di Menu Bar macOS.
+- **Layar Android Menyatu Langsung (Unified Studio Window)**:
+  - Layar HP dengan bezel bodi smartphone, punch-hole camera, dan speaker grill terintegrasi langsung di dalam jendela Universal ADB Control (tidak ada jendela terpisah).
+  - Tombol kontrol fisik Android interaktif: Back (◀), Home (●), Recents (■), Power (⏻), Volume Turun & Naik.
+  - Zero Presence: scrcpy terbungkus 100% dan tidak pernah muncul di macOS Dock, App Switcher (`⌘+Tab`), maupun Menu Bar.
 - **Universal Clipboard Sync**: Sinkronisasi clipboard real-time 2 arah (Teks, Gambar, Berkas) antara macOS dan Android via socket TCP berkecepatan tinggi.
 - **Seamless Mouse & Keyboard Control**: Alihkan kendali mouse dan keyboard ke HP Android secara instan dengan pintasan global `⌘ + ⌥ + T` (Command + Option + T).
-- **Tampilan Emulator Android (Bezel & Kamera)**:
-  - Jendela smartphone proporsional (380 × 820 pt), bukan fullscreen.
-  - Bezel melengkung halus (*Corner Radius 36 pt*) dengan punch-hole camera realistis dan speaker ear-piece.
-  - Dapat di-drag / dipindahkan bebas di atas layar Mac dengan menarik header bezel atas.
 - **Optimasi Streaming Wi-Fi Ultra-Rendah Latensi**:
   - Hardware encoding H.265 (HEVC) hemat bandwidth hingga 50%.
   - Pembatasan resolusi adaptif (`max-size=1280`) untuk latensi encoding < 4 ms.
@@ -31,7 +31,9 @@ universal-adb-control/
 ├── src/
 │   ├── cli/                   # Skrip CLI manager (universal-adb-control)
 │   ├── daemon/                # Background sync & control daemon (Swift)
-│   └── gui/                   # GUI SwiftUI & Menu Bar macOS
+│   ├── frame/                 # Dylib injeksi frame bezel & stealth mode
+│   ├── gui/                   # GUI SwiftUI & Menu Bar macOS
+│   └── helper/                # Binary launcher pembungkus mandiri
 ├── build.sh                   # Skrip kompilasi biner daemon & GUI
 ├── bundle_app.sh              # Skrip pembuatan macOS App Bundle (.app)
 └── README.md

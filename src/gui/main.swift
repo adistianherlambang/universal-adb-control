@@ -2,26 +2,26 @@ import Cocoa
 import SwiftUI
 
 @available(macOS 11.0, *)
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var window: NSWindow?
     let appState = AppState()
     var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Create Menu Bar item
         setupMenuBar()
         
-        // Create Main Window
         let contentView = MainView(state: appState)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 500),
+            contentRect: NSRect(x: 0, y: 0, width: 1040, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
+        window.minSize = NSSize(width: 980, height: 680)
         window.center()
         window.title = "Universal ADB Control"
         window.contentView = NSHostingView(rootView: contentView)
+        window.delegate = self
         window.makeKeyAndOrderFront(nil)
         window.isReleasedWhenClosed = false
         self.window = window
@@ -52,11 +52,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc func toggleControl() {
-        appState.toggleScrcpyControl()
+        appState.toggleDisplay()
     }
     
     @objc func quitApp() {
+        appState.stopDisplay()
         NSApplication.shared.terminate(nil)
+    }
+    
+    func windowWillClose(_ notification: Notification) {
+        appState.stopDisplay()
+    }
+    
+    func applicationWillTerminate(_ notification: Notification) {
+        appState.stopDisplay()
     }
 }
 
