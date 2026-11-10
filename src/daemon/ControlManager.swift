@@ -301,13 +301,13 @@ public final class ControlManager {
             // Mode Windowed Emulator Android:
             // - Bukan fullscreen (layar Mac tetap terlihat)
             // - Ukuran smartphone proporsional (380x820)
+            // - Resizable window dengan tombol Close, Minimize, Zoom
             // - Bezel melengkung & punch-hole camera dari overlay dylib
             // - Always-on-top mengambang di atas desktop Mac
             p.arguments = [
                 "-s", targetSerial,
                 "--window-width=380",
                 "--window-height=820",
-                "--window-borderless",
                 "--always-on-top",
                 "--stay-awake",
                 "--shortcut-mod=rctrl",

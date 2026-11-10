@@ -9,6 +9,10 @@ Aplikasi kontrol nirkabel & kabel untuk mengendalikan HP Android dari Mac secara
 - **GUI & Menu Bar macOS**: Antarmuka native SwiftUI/AppKit modern dengan kontrol status bar di Menu Bar macOS.
 - **Universal Clipboard Sync**: Sinkronisasi clipboard real-time 2 arah (Teks, Gambar, Berkas) antara macOS dan Android via socket TCP berkecepatan tinggi.
 - **Seamless Mouse & Keyboard Control**: Alihkan kendali mouse dan keyboard ke HP Android secara instan dengan pintasan global `⌘ + ⌥ + T` (Command + Option + T).
+- **Tampilan Emulator Android (Bezel & Kamera)**:
+  - Jendela smartphone proporsional (380 × 820 pt), bukan fullscreen.
+  - Bezel melengkung halus (*Corner Radius 36 pt*) dengan punch-hole camera realistis dan speaker ear-piece.
+  - Dapat di-drag / dipindahkan bebas di atas layar Mac dengan menarik header bezel atas.
 - **Optimasi Streaming Wi-Fi Ultra-Rendah Latensi**:
   - Hardware encoding H.265 (HEVC) hemat bandwidth hingga 50%.
   - Pembatasan resolusi adaptif (`max-size=1280`) untuk latensi encoding < 4 ms.

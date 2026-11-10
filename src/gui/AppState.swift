@@ -238,7 +238,7 @@ public class AppState: ObservableObject {
                 let dylibPath = ("~/.universal-adb-control/helpers/libUniversalControlFrame.dylib" as NSString).expandingTildeInPath
                 let dyldExport = FileManager.default.fileExists(atPath: dylibPath) ? "export DYLD_INSERT_LIBRARIES=\"\(dylibPath)\"; " : ""
                 
-                let args = "-s \(target) --window-width=380 --window-height=820 --window-borderless --always-on-top --stay-awake --shortcut-mod=rctrl --no-audio --video-codec=\(self.videoCodec) --video-bit-rate=\(self.videoBitrate) --max-size=\(self.maxSize) --max-fps=\(self.maxFps) --video-buffer=\(self.videoBufferMs) --keyboard=uhid --mouse=uhid --window-title=\"Universal ADB Control\""
+                let args = "-s \(target) --window-width=380 --window-height=820 --always-on-top --stay-awake --shortcut-mod=rctrl --no-audio --video-codec=\(self.videoCodec) --video-bit-rate=\(self.videoBitrate) --max-size=\(self.maxSize) --max-fps=\(self.maxFps) --video-buffer=\(self.videoBufferMs) --keyboard=uhid --mouse=uhid --window-title=\"Universal ADB Control\""
                 _ = self.runShell("export SDL_MAC_BACKGROUND_APP=1; \(dyldExport)nohup \(exec) \(args) > /dev/null 2>&1 &")
                 DispatchQueue.main.async {
                     self.isScrcpyActive = true

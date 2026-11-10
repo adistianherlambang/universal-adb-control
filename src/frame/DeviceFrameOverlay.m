@@ -14,12 +14,20 @@
 }
 
 - (NSView *)hitTest:(NSPoint)point {
-    // Area bezel atas (32pt) dapat digunakan untuk men-drag jendela di layar Mac
-    NSRect topBezel = NSMakeRect(0, self.bounds.size.height - 32, self.bounds.size.width, 32);
+    // 1. Area Traffic Lights (Close, Minimize, Zoom) di pojok kiri atas
+    // Berikan prioritas ke tombol traffic lights macOS agar klik merah/kuning/hijau berfungsi normal
+    NSRect trafficLightsArea = NSMakeRect(0, self.bounds.size.height - 34, 78, 34);
+    if (NSPointInRect(point, trafficLightsArea)) {
+        return nil;
+    }
+    
+    // 2. Area Bezel Atas (di luar tombol traffic lights) dapat digunakan untuk men-drag window
+    NSRect topBezel = NSMakeRect(0, self.bounds.size.height - 34, self.bounds.size.width, 34);
     if (NSPointInRect(point, topBezel)) {
         return self;
     }
-    // Area layar tembus langsung ke scrcpy di bawahnya (mouse & touch interaktif)
+    
+    // 3. Seluruh area layar HP tembus langsung ke scrcpy (interaksi sentuhan & kursor mouse)
     return nil;
 }
 
@@ -32,8 +40,8 @@
     
     NSRect bounds = self.bounds;
     
-    // 1. Gambar Bezel Border luar halus dengan kurva sudut modern (R: 36)
-    NSBezierPath *bezelPath = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(bounds, 2.0, 2.0) xRadius:36.0 yRadius:36.0];
+    // 1. Bezel Border luar halus dengan kurva sudut modern (R: 32)
+    NSBezierPath *bezelPath = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(bounds, 2.0, 2.0) xRadius:32.0 yRadius:32.0];
     [[NSColor colorWithCalibratedWhite:0.12 alpha:0.95] setStroke];
     [bezelPath setLineWidth:4.0];
     [bezelPath stroke];
@@ -76,16 +84,31 @@ static void applyDeviceFrame(NSWindow *window) {
     if (!window) return;
     
     dispatch_async(dispatch_get_main_queue(), ^{
+        // Aktifkan mask Resize, Close, Minimize, Zoom, dan FullSizeContentView
+        window.styleMask |= (NSWindowStyleMaskTitled |
+                             NSWindowStyleMaskClosable |
+                             NSWindowStyleMaskMiniaturizable |
+                             NSWindowStyleMaskResizable |
+                             NSWindowStyleMaskFullSizeContentView);
+        
         window.titlebarAppearsTransparent = YES;
         window.titleVisibility = NSWindowTitleHidden;
-        window.styleMask |= NSWindowStyleMaskFullSizeContentView;
         [window setMovableByWindowBackground:YES];
+        
+        // Pastikan tombol traffic lights (Close, Minimize, Zoom) aktif dan tampil di atas
+        NSButton *closeBtn = [window standardWindowButton:NSWindowCloseButton];
+        NSButton *minBtn = [window standardWindowButton:NSWindowMiniaturizeButton];
+        NSButton *zoomBtn = [window standardWindowButton:NSWindowZoomButton];
+        
+        [closeBtn setHidden:NO];
+        [minBtn setHidden:NO];
+        [zoomBtn setHidden:NO];
         
         NSView *contentView = window.contentView;
         if (!contentView) return;
         
         contentView.wantsLayer = YES;
-        contentView.layer.cornerRadius = 36.0;
+        contentView.layer.cornerRadius = 32.0;
         contentView.layer.masksToBounds = YES;
         
         // Hindari penambahan ganda jika sudah ada
@@ -97,7 +120,12 @@ static void applyDeviceFrame(NSWindow *window) {
         overlay.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         [contentView addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
         
-        NSLog(@"[UniversalControlFrame] Android emulator device frame & punch-hole camera applied to window: %@", window);
+        // Pindahkan tombol traffic lights ke depan agar selalu dapat diklik
+        if (closeBtn) [closeBtn.superview addSubview:closeBtn positioned:NSWindowAbove relativeTo:nil];
+        if (minBtn) [minBtn.superview addSubview:minBtn positioned:NSWindowAbove relativeTo:nil];
+        if (zoomBtn) [zoomBtn.superview addSubview:zoomBtn positioned:NSWindowAbove relativeTo:nil];
+        
+        NSLog(@"[UniversalControlFrame] Window configured with resizable frame, traffic lights & punch-hole camera: %@", window);
     });
 }
 
