@@ -1,16 +1,21 @@
 # Universal ADB Control
 
-Aplikasi kontrol nirkabel & kabel untuk mengendalikan Android dari Mac secara universal (Mouse, Keyboard, dan Sinkronisasi Clipboard dua arah secara instan).
+Aplikasi kontrol nirkabel & kabel untuk mengendalikan HP Android dari Mac secara universal (Mouse, Keyboard, dan Sinkronisasi Clipboard dua arah secara instan).
 
 ---
 
 ## Fitur Utama
 
-- **GUI & Menu Bar macOS**: Dilengkapi antarmuka native SwiftUI/AppKit yang modern dengan status bar item di menu bar atas macOS.
+- **GUI & Menu Bar macOS**: Antarmuka native SwiftUI/AppKit modern dengan kontrol status bar di Menu Bar macOS.
 - **Universal Clipboard Sync**: Sinkronisasi clipboard real-time 2 arah (Teks, Gambar, Berkas) antara macOS dan Android via socket TCP berkecepatan tinggi.
-- **Seamless Mouse & Keyboard Control**: Beralih kendali mouse dan keyboard ke HP Android langsung menggunakan shortcut global `⌘ + ⌥ + T` (Command + Option + T).
-- **Device Management**: Deteksi perangkat USB & Wi-Fi ADB secara otomatis, dengan dukungan *one-click connect/disconnect*.
-- **CLI & Background Daemon**: Daemon latar belakang otomatis berjalan via macOS LaunchAgent (`com.universal.adb.control.daemon`).
+- **Seamless Mouse & Keyboard Control**: Alihkan kendali mouse dan keyboard ke HP Android secara instan dengan pintasan global `⌘ + ⌥ + T` (Command + Option + T).
+- **Optimasi Streaming Wi-Fi Ultra-Rendah Latensi**:
+  - Hardware encoding H.265 (HEVC) hemat bandwidth hingga 50%.
+  - Pembatasan resolusi adaptif (`max-size=1280`) untuk latensi encoding < 4 ms.
+  - Penguncian 60 FPS stabil.
+  - Jitter buffer 15 ms untuk menyerap fluktuasi sinyal nirkabel tanpa lag/patah-patah.
+- **Device Management**: Deteksi otomatis perangkat ADB USB & Wi-Fi dengan fitur *one-click connect/disconnect*.
+- **Background Daemon & CLI**: Berjalan stabil di latar belakang via macOS LaunchAgent (`com.universal.adb.control.daemon`).
 
 ---
 
@@ -18,56 +23,66 @@ Aplikasi kontrol nirkabel & kabel untuk mengendalikan Android dari Mac secara un
 
 ```text
 universal-adb-control/
-├── bin/                       # Output biner hasil kompilasi (gitignored)
+├── bin/                       # Biner hasil build & App Bundle (gitignored)
 ├── src/
-│   ├── cli/                   # Skrip bash CLI manager (universal-adb-control)
-│   ├── daemon/                # Source code Swift untuk background sync daemon
-│   └── gui/                   # Source code SwiftUI untuk aplikasi GUI & Menu Bar
-├── build.sh                   # Skrip otomatis untuk build biner daemon dan GUI
+│   ├── cli/                   # Skrip CLI manager (universal-adb-control)
+│   ├── daemon/                # Background sync & control daemon (Swift)
+│   └── gui/                   # GUI SwiftUI & Menu Bar macOS
+├── build.sh                   # Skrip kompilasi biner daemon & GUI
+├── bundle_app.sh              # Skrip pembuatan macOS App Bundle (.app)
 └── README.md
 ```
 
 ---
 
-## Cara Kompilasi
+## Cara Kompilasi & Menjalankan
 
-Jalankan perintah berikut di terminal:
-
+### 1. Build Biner & macOS App Bundle
 ```bash
-chmod +x build.sh
-./build.sh
+chmod +x build.sh bundle_app.sh
+./bundle_app.sh
 ```
 
-Biner akan tersedia di direktori `bin/`:
-- `bin/universal-adb-control-daemon`
-- `bin/UniversalADBControlGUI`
-
----
-
-## Penggunaan
-
-### 1. Menjalankan Aplikasi GUI
+Aplikasi macOS siap dibuka melalui:
 ```bash
-./bin/UniversalADBControlGUI
+open "bin/Universal ADB Control.app"
 ```
 
 ### 2. Menggunakan CLI
 ```bash
-# Cek status layanan
+# Cek status layanan daemon & koneksi perangkat
 universal-adb-control status
 
-# Mulai / hentikan / restart daemon
+# Kontrol daemon
 universal-adb-control start
 universal-adb-control stop
 universal-adb-control restart
 
-# Melihat log aktivitas
+# Memantau log aktivitas
 universal-adb-control logs
 ```
 
-### 3. Shortcut Kontrol Mouse & Keyboard
-- Tekan **`⌘ + Option + T`** untuk mengalihkan mouse dan keyboard ke HP.
-- Tekan **`⌘ + Option + T`** kembali untuk melepaskan kursor ke layar Mac.
+### 3. Pintasan Global Kontrol Layar Penuh
+- Tekan **`⌘ + Option + T`** di mana saja untuk mengalihkan mouse dan keyboard ke HP Android.
+- Tekan **`⌘ + Option + T`** kembali untuk menyembunyikan kontrol dan mengembalikan kursor ke layar Mac.
+
+---
+
+## Konfigurasi Kinerja (`config.conf`)
+
+Konfigurasi disimpan di `~/.universal-adb-control/config.conf` atau dapat diatur via tab **Pengaturan** di GUI:
+
+```conf
+# Universal ADB Control Configuration
+ADB=/opt/homebrew/bin/adb
+DEVICE=
+SYNC_INTERVAL_MS=300
+VIDEO_BITRATE=3M
+MAX_SIZE=1280
+MAX_FPS=60
+VIDEO_BUFFER_MS=15
+VIDEO_CODEC=h265
+```
 
 ---
 
