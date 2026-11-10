@@ -24,3 +24,4 @@ swiftc -O -parse-as-library \
     -o bin/UniversalADBControlGUI
 
 echo "==> Sukses! Binary tersedia di folder bin/"
+

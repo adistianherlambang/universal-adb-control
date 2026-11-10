@@ -192,8 +192,10 @@ public class AppState: ObservableObject {
         let scrcpyRunning = !runShell("pgrep -f scrcpy").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         
         if scrcpyRunning {
-            _ = runShell("pkill -f scrcpy")
-            notify(message: "Kontrol scrcpy dihentikan")
+            // Sembunyikan dan alihkan ke Mac
+            _ = runShell("osascript -e 'tell application \"System Events\" to set visible of first process whose name contains \"scrcpy\" to false'")
+            isScrcpyActive = false
+            notify(message: "Kontrol scrcpy disembunyikan (kembali ke Mac).")
         } else {
             DispatchQueue.global(qos: .userInitiated).async {
                 let target = self.preferredDevice.isEmpty ? (self.adbDevices.first?.serial ?? "") : self.preferredDevice
@@ -204,11 +206,11 @@ public class AppState: ObservableObject {
                     return
                 }
                 
-                let isWifi = target.contains(":") || target.contains("._tcp")
-                let args = isWifi ? "-s \(target) --keyboard=uhid --mouse=uhid --no-audio --window-title=UniversalADBControl" : "--otg -s \(target)"
+                let args = "-s \(target) --fullscreen --stay-awake --shortcut-mod=rctrl --no-audio --keyboard=uhid --mouse=uhid --window-title=UniversalADBControl"
                 _ = self.runShell("nohup scrcpy \(args) > /dev/null 2>&1 &")
                 DispatchQueue.main.async {
-                    self.notify(message: "Memulai kontrol mouse & keyboard (\(target))")
+                    self.isScrcpyActive = true
+                    self.notify(message: "Mengontrol Android (\(target)) layar penuh. Tekan ⌘⌥T untuk kembali ke Mac.")
                     self.refreshStatus()
                 }
             }

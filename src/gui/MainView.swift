@@ -445,3 +445,4 @@ struct LogsView: View {
         .padding(16)
     }
 }
+

@@ -48,3 +48,4 @@ EOF
 
 echo "==> Sukses! Aplikasi macOS bundle siap di ${BUNDLE_DIR}"
 echo "    Bisa dibuka dengan: open \"${BUNDLE_DIR}\""
+
