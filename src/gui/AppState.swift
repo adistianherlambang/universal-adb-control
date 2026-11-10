@@ -211,13 +211,14 @@ public class AppState: ObservableObject {
     }
     
     public func toggleScrcpyControl() {
-        let scrcpyRunning = !runShell("pgrep -f scrcpy").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let isDisplayRunning = !runShell("pgrep -f 'UniversalADBControlDisplay|scrcpy'").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         
-        if scrcpyRunning {
+        if isDisplayRunning {
             // Sembunyikan dan alihkan ke Mac
-            _ = runShell("osascript -e 'tell application \"System Events\" to set visible of first process whose name contains \"scrcpy\" to false'")
+            let script = "osascript -e 'tell application \"System Events\" to set visible of (every process whose bundle identifier is \"com.universal.adb.control.display\" or name contains \"UniversalADBControlDisplay\" or name contains \"scrcpy\") to false'"
+            _ = runShell(script)
             isScrcpyActive = false
-            notify(message: "Kontrol scrcpy disembunyikan (kembali ke Mac).")
+            notify(message: "Layar kontrol disembunyikan (kembali ke Mac).")
         } else {
             DispatchQueue.global(qos: .userInitiated).async {
                 let target = self.preferredDevice.isEmpty ? (self.adbDevices.first?.serial ?? "") : self.preferredDevice
@@ -231,8 +232,11 @@ public class AppState: ObservableObject {
                 // Matikan keyboard virtual di layar Android
                 _ = self.runShell("\(self.adbPath) -s \(target) shell settings put secure show_ime_with_hard_keyboard 0")
                 
-                let args = "-s \(target) --fullscreen --stay-awake --shortcut-mod=rctrl --no-audio --video-codec=\(self.videoCodec) --video-bit-rate=\(self.videoBitrate) --max-size=\(self.maxSize) --max-fps=\(self.maxFps) --video-buffer=\(self.videoBufferMs) --keyboard=uhid --mouse=uhid --window-title=UniversalADBControl"
-                _ = self.runShell("nohup scrcpy \(args) > /dev/null 2>&1 &")
+                let helperBin = ("~/.universal-adb-control/helpers/UniversalADBControlDisplay.app/Contents/MacOS/UniversalADBControlDisplay" as NSString).expandingTildeInPath
+                let exec = FileManager.default.isExecutableFile(atPath: helperBin) ? "\"\(helperBin)\"" : "scrcpy"
+                
+                let args = "-s \(target) --fullscreen --stay-awake --shortcut-mod=rctrl --no-audio --video-codec=\(self.videoCodec) --video-bit-rate=\(self.videoBitrate) --max-size=\(self.maxSize) --max-fps=\(self.maxFps) --video-buffer=\(self.videoBufferMs) --keyboard=uhid --mouse=uhid --window-title=\"Universal ADB Control\""
+                _ = self.runShell("export SDL_MAC_BACKGROUND_APP=1; nohup \(exec) \(args) > /dev/null 2>&1 &")
                 DispatchQueue.main.async {
                     self.isScrcpyActive = true
                     self.notify(message: "Mengontrol Android (\(target)) layar penuh. Tekan ⌘⌥T untuk kembali ke Mac.")

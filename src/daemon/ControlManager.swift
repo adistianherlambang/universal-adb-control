@@ -36,6 +36,52 @@ public final class ControlManager {
         }
     }
     
+    // Membungkus scrcpy ke dalam App Bundle helper mandiri berstatus LSUIElement
+    // sehingga scrcpy TIDAK PERNAH muncul sebagai aplikasi mandiri di Dock / App Switcher
+    public static func ensureDisplayHelperBundle(scrcpyBin: String) -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let helperDir = home.appendingPathComponent(".universal-adb-control/helpers/UniversalADBControlDisplay.app", isDirectory: true)
+        let macosDir = helperDir.appendingPathComponent("Contents/MacOS", isDirectory: true)
+        let execPath = macosDir.appendingPathComponent("UniversalADBControlDisplay").path
+        let plistPath = helperDir.appendingPathComponent("Contents/Info.plist").path
+        
+        let fm = FileManager.default
+        try? fm.createDirectory(at: macosDir, withIntermediateDirectories: true)
+        
+        let plistContent = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleExecutable</key>
+            <string>UniversalADBControlDisplay</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.universal.adb.control.display</string>
+            <key>CFBundleName</key>
+            <string>Universal ADB Control</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>LSUIElement</key>
+            <true/>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+        </dict>
+        </plist>
+        """
+        try? plistContent.write(toFile: plistPath, atomically: true, encoding: .utf8)
+        
+        if !fm.fileExists(atPath: execPath) || (try? fm.destinationOfSymbolicLink(atPath: execPath)) != scrcpyBin {
+            try? fm.removeItem(atPath: execPath)
+            try? fm.createSymbolicLink(atPath: execPath, withDestinationPath: scrcpyBin)
+        }
+        
+        return execPath
+    }
+    
+    private var displayExecutable: String {
+        return ControlManager.ensureDisplayHelperBundle(scrcpyBin: scrcpyBin)
+    }
+    
     public func registerHotKey() {
         var gMyHotKeyID = EventHotKeyID()
         gMyHotKeyID.signature = OSType(0x55414442) // "UADB"
@@ -66,10 +112,15 @@ public final class ControlManager {
         }
     }
     
-    private func getScrcpyApp() -> NSRunningApplication? {
+    private func getDisplayApp() -> NSRunningApplication? {
         let apps = NSWorkspace.shared.runningApplications
         for app in apps {
-            if app.bundleIdentifier == "org.freedesktop.scrcpy" || (app.localizedName?.lowercased().contains("scrcpy") ?? false) {
+            let bid = app.bundleIdentifier ?? ""
+            let name = app.localizedName?.lowercased() ?? ""
+            if bid == "com.universal.adb.control.display" ||
+               bid == "org.freedesktop.scrcpy" ||
+               name.contains("universaladbcontroldisplay") ||
+               name.contains("scrcpy") {
                 return app
             }
         }
@@ -103,27 +154,31 @@ public final class ControlManager {
             return
         }
         
-        let scrcpyApp = getScrcpyApp()
-        let isRunning = (scrcpyApp != nil && !(scrcpyApp?.isTerminated ?? true))
+        let displayApp = getDisplayApp()
+        let isRunning = (displayApp != nil && !(displayApp?.isTerminated ?? true))
         
         if isControlling && isRunning {
             // Mode kontrol sedang aktif -> Kembali ke Mac
             switchToMac()
         } else if isRunning {
-            // Scrcpy sudah ada tapi sedang disembunyikan -> Buka kembali ke Android
+            // Display sudah ada tapi sedang disembunyikan -> Buka kembali ke Android
             switchToAndroid()
         } else {
-            // Scrcpy belum berjalan -> Luncurkan baru
-            launchScrcpy()
+            // Belum berjalan -> Luncurkan baru
+            launchDisplay()
         }
     }
     
     private func switchToMac() {
         isControlling = false
         
-        if let app = getScrcpyApp() {
+        if let app = getDisplayApp() {
             app.hide()
-            let script = "tell application \"System Events\" to set visible of first process whose name contains \"scrcpy\" to false"
+            let script = """
+            tell application "System Events"
+                set visible of (every process whose bundle identifier is "com.universal.adb.control.display" or name contains "UniversalADBControlDisplay" or name contains "scrcpy") to false
+            end tell
+            """
             executeAppleScript(script)
         }
         
@@ -142,8 +197,8 @@ public final class ControlManager {
     }
     
     private func switchToAndroid() {
-        guard let app = getScrcpyApp(), !app.isTerminated else {
-            launchScrcpy()
+        guard let app = getDisplayApp(), !app.isTerminated else {
+            launchDisplay()
             return
         }
         
@@ -157,8 +212,8 @@ public final class ControlManager {
         
         let script = """
         tell application "System Events"
-            set visible of first process whose name contains "scrcpy" to true
-            set frontmost of first process whose name contains "scrcpy" to true
+            set visible of (every process whose bundle identifier is "com.universal.adb.control.display" or name contains "UniversalADBControlDisplay" or name contains "scrcpy") to true
+            set frontmost of (first process whose bundle identifier is "com.universal.adb.control.display" or name contains "UniversalADBControlDisplay" or name contains "scrcpy") to true
         end tell
         """
         executeAppleScript(script)
@@ -198,7 +253,7 @@ public final class ControlManager {
         return []
     }
     
-    private func launchScrcpy() {
+    private func launchDisplay() {
         let devs = getConnectedAdbDevices()
         if devs.isEmpty {
             showNotification(title: "Universal ADB Control", message: "Tidak ada perangkat Android terhubung!")
@@ -233,14 +288,13 @@ public final class ControlManager {
             guard let self = self else { return }
             
             let p = Process()
-            p.executableURL = URL(fileURLWithPath: self.scrcpyBin)
+            p.executableURL = URL(fileURLWithPath: self.displayExecutable)
             
-            // Optimasi performa Wi-Fi:
-            // - H.265 hardware encoder (c2.exynos.hevc.encoder) hemat bandwidth 50%
-            // - Bitrate disesuaikan (default 3M) agar tidak ada TCP packet congestion
-            // - Max size 1280 agar latensi encode di HP turun ke <4ms
-            // - Max FPS 60 agar HP tidak over-stream 120fps via Wi-Fi
-            // - Video buffer 15ms untuk menyerap fluktuasi/jitter Wi-Fi sehingga tidak patah-patah
+            var env = ProcessInfo.processInfo.environment
+            env["SDL_MAC_BACKGROUND_APP"] = "1"
+            p.environment = env
+            
+            // Optimasi performa Wi-Fi & Fullscreen:
             p.arguments = [
                 "-s", targetSerial,
                 "--fullscreen",
@@ -254,7 +308,7 @@ public final class ControlManager {
                 "--video-buffer=\(config.videoBufferMs)",
                 "--keyboard=uhid",
                 "--mouse=uhid",
-                "--window-title=UniversalADBControl"
+                "--window-title=Universal ADB Control"
             ]
             
             p.standardOutput = FileHandle.nullDevice
@@ -262,16 +316,16 @@ public final class ControlManager {
             
             do {
                 try p.run()
-                Logger.shared.log("Launched scrcpy with PID: \(p.processIdentifier)")
+                Logger.shared.log("Launched Universal ADB Control Display with PID: \(p.processIdentifier)")
                 
                 var attempts = 0
                 while attempts < 30 {
                     Thread.sleep(forTimeInterval: 0.2)
-                    if let app = self.getScrcpyApp() {
+                    if let app = self.getDisplayApp() {
                         DispatchQueue.main.async {
                             let script = """
                             tell application "System Events"
-                                set frontmost of first process whose name contains "scrcpy" to true
+                                set frontmost of (first process whose bundle identifier is "com.universal.adb.control.display" or name contains "UniversalADBControlDisplay" or name contains "scrcpy") to true
                             end tell
                             """
                             self.executeAppleScript(script)
@@ -292,17 +346,17 @@ public final class ControlManager {
                     self.isLaunching = false
                     if p.isRunning {
                         self.isControlling = true
-                        self.showNotification(title: "Universal ADB Control", message: "scrcpy aktif (Layar penuh, ⌘⌥T untuk kembali)")
+                        self.showNotification(title: "Universal ADB Control", message: "Layar kontrol aktif (⌘⌥T untuk kembali)")
                     } else {
                         self.isControlling = false
-                        self.showNotification(title: "Universal ADB Control", message: "scrcpy berhenti tak terduga")
+                        self.showNotification(title: "Universal ADB Control", message: "Layar kontrol berhenti tak terduga")
                     }
                 }
             } catch {
                 DispatchQueue.main.async {
                     self.isLaunching = false
                     self.isControlling = false
-                    self.showNotification(title: "Universal ADB Control", message: "Gagal menjalankan scrcpy: \(error.localizedDescription)")
+                    self.showNotification(title: "Universal ADB Control", message: "Gagal menjalankan kontrol layar: \(error.localizedDescription)")
                 }
             }
         }
