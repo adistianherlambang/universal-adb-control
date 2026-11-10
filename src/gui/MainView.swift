@@ -368,6 +368,57 @@ struct SettingsView: View {
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                     }
                     
+                    Divider()
+                        .padding(.vertical, 4)
+                    
+                    Text("Optimasi Kinerja Streaming Wi-Fi")
+                        .font(.subheadline)
+                        .fontWeight(.bold)
+                    
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Video Bitrate (Rekomendasi 2M-4M)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            TextField("3M", text: $state.videoBitrate)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Resolusi Maksimal")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            TextField("1280", text: $state.maxSize)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                        }
+                    }
+                    
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Maksimal FPS")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            TextField("60", text: $state.maxFps)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Video Buffer Jitter (ms)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            TextField("15", text: $state.videoBufferMs)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Video Codec (h265 / h264)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            TextField("h265", text: $state.videoCodec)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                        }
+                    }
+                    
                     HStack {
                         Button("Simpan Pengaturan") {
                             state.saveConfig()

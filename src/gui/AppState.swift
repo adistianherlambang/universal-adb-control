@@ -34,6 +34,13 @@ public class AppState: ObservableObject {
     @Published public var preferredDevice: String = ""
     @Published public var syncIntervalMs: String = "300"
     
+    // Konfigurasi performa streaming scrcpy Wi-Fi
+    @Published public var videoBitrate: String = "3M"
+    @Published public var maxSize: String = "1280"
+    @Published public var maxFps: String = "60"
+    @Published public var videoBufferMs: String = "15"
+    @Published public var videoCodec: String = "h265"
+    
     @Published public var isScrcpyActive: Bool = false
     @Published public var alertMessage: String? = nil
     @Published public var showAlert: Bool = false
@@ -70,6 +77,16 @@ public class AppState: ObservableObject {
                     self.preferredDevice = parts[1]
                 case "SYNC_INTERVAL_MS":
                     self.syncIntervalMs = parts[1]
+                case "VIDEO_BITRATE":
+                    self.videoBitrate = parts[1]
+                case "MAX_SIZE":
+                    self.maxSize = parts[1]
+                case "MAX_FPS":
+                    self.maxFps = parts[1]
+                case "VIDEO_BUFFER_MS":
+                    self.videoBufferMs = parts[1]
+                case "VIDEO_CODEC":
+                    self.videoCodec = parts[1]
                 default:
                     break
                 }
@@ -84,6 +101,11 @@ public class AppState: ObservableObject {
         ADB=\(adbPath)
         DEVICE=\(preferredDevice)
         SYNC_INTERVAL_MS=\(syncIntervalMs)
+        VIDEO_BITRATE=\(videoBitrate)
+        MAX_SIZE=\(maxSize)
+        MAX_FPS=\(maxFps)
+        VIDEO_BUFFER_MS=\(videoBufferMs)
+        VIDEO_CODEC=\(videoCodec)
         """
         do {
             try content.write(toFile: confPath, atomically: true, encoding: .utf8)
@@ -206,7 +228,7 @@ public class AppState: ObservableObject {
                     return
                 }
                 
-                let args = "-s \(target) --fullscreen --stay-awake --shortcut-mod=rctrl --no-audio --keyboard=uhid --mouse=uhid --window-title=UniversalADBControl"
+                let args = "-s \(target) --fullscreen --stay-awake --shortcut-mod=rctrl --no-audio --video-codec=\(self.videoCodec) --video-bit-rate=\(self.videoBitrate) --max-size=\(self.maxSize) --max-fps=\(self.maxFps) --video-buffer=\(self.videoBufferMs) --keyboard=uhid --mouse=uhid --window-title=UniversalADBControl"
                 _ = self.runShell("nohup scrcpy \(args) > /dev/null 2>&1 &")
                 DispatchQueue.main.async {
                     self.isScrcpyActive = true

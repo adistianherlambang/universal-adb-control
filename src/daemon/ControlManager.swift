@@ -218,15 +218,23 @@ public final class ControlManager {
             let p = Process()
             p.executableURL = URL(fileURLWithPath: self.scrcpyBin)
             
-            // Fullscreen capture: seluruh layar tertutup scrcpy sehingga kursor mouse
-            // dan keyboard 100% masuk ke Android tanpa ada klik/ketikan yang bocor ke Mac.
-            // shortcut-mod diubah ke rctrl agar tombol Cmd dan Option tidak melepas capture scrcpy.
+            // Optimasi performa Wi-Fi:
+            // - H.265 hardware encoder (c2.exynos.hevc.encoder) hemat bandwidth 50%
+            // - Bitrate disesuaikan (default 3M) agar tidak ada TCP packet congestion
+            // - Max size 1280 agar latensi encode di HP turun ke <4ms
+            // - Max FPS 60 agar HP tidak over-stream 120fps via Wi-Fi
+            // - Video buffer 15ms untuk menyerap fluktuasi/jitter Wi-Fi sehingga tidak patah-patah
             p.arguments = [
                 "-s", targetSerial,
                 "--fullscreen",
                 "--stay-awake",
                 "--shortcut-mod=rctrl",
                 "--no-audio",
+                "--video-codec=\(config.videoCodec)",
+                "--video-bit-rate=\(config.videoBitrate)",
+                "--max-size=\(config.maxSize)",
+                "--max-fps=\(config.maxFps)",
+                "--video-buffer=\(config.videoBufferMs)",
                 "--keyboard=uhid",
                 "--mouse=uhid",
                 "--window-title=UniversalADBControl"

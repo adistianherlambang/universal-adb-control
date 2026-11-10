@@ -92,6 +92,11 @@ public struct DaemonConfig {
     public var adbPath: String
     public var syncIntervalMs: Int = 300
     public var storageDir: URL
+    public var videoBitrate: String = "3M"
+    public var maxSize: String = "1280"
+    public var maxFps: String = "60"
+    public var videoBufferMs: String = "15"
+    public var videoCodec: String = "h265"
 
     public static func load() -> DaemonConfig {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -101,16 +106,37 @@ public struct DaemonConfig {
 
         var dev: String? = nil
         var adb = "/opt/homebrew/bin/adb"
+        var syncInterval = 300
+        var bitrate = "3M"
+        var size = "1280"
+        var fps = "60"
+        var buffer = "15"
+        var codec = "h265"
 
         if FileManager.default.fileExists(atPath: confFile.path),
            let content = try? String(contentsOf: confFile, encoding: .utf8) {
             for line in content.components(separatedBy: .newlines) {
                 let parts = line.split(separator: "=", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespaces) }
                 if parts.count == 2 {
-                    if parts[0] == "DEVICE" && !parts[1].isEmpty {
-                        dev = parts[1]
-                    } else if parts[0] == "ADB" && !parts[1].isEmpty {
-                        adb = parts[1]
+                    switch parts[0] {
+                    case "DEVICE":
+                        if !parts[1].isEmpty { dev = parts[1] }
+                    case "ADB":
+                        if !parts[1].isEmpty { adb = parts[1] }
+                    case "SYNC_INTERVAL_MS":
+                        if let v = Int(parts[1]) { syncInterval = v }
+                    case "VIDEO_BITRATE":
+                        if !parts[1].isEmpty { bitrate = parts[1] }
+                    case "MAX_SIZE":
+                        if !parts[1].isEmpty { size = parts[1] }
+                    case "MAX_FPS":
+                        if !parts[1].isEmpty { fps = parts[1] }
+                    case "VIDEO_BUFFER_MS":
+                        if !parts[1].isEmpty { buffer = parts[1] }
+                    case "VIDEO_CODEC":
+                        if !parts[1].isEmpty { codec = parts[1] }
+                    default:
+                        break
                     }
                 }
             }
@@ -125,7 +151,17 @@ public struct DaemonConfig {
         let tmpDir = confDir.appendingPathComponent("temp", isDirectory: true)
         try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
 
-        return DaemonConfig(preferredDevice: dev, adbPath: adb, storageDir: tmpDir)
+        return DaemonConfig(
+            preferredDevice: dev,
+            adbPath: adb,
+            syncIntervalMs: syncInterval,
+            storageDir: tmpDir,
+            videoBitrate: bitrate,
+            maxSize: size,
+            maxFps: fps,
+            videoBufferMs: buffer,
+            videoCodec: codec
+        )
     }
 }
 
