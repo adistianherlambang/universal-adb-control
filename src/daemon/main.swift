@@ -25,15 +25,15 @@ guard FileManager.default.fileExists(atPath: dexPath) else {
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory) // Runs cleanly as background accessory without dock icon clutter
 
-// 1. Start continuous clipboard sync daemon in background
+// 1. Register global hotkey Cmd+Option+T for Mouse & Keyboard control FIRST
+ControlManager.shared.registerHotKey()
+
+// 2. Start continuous clipboard sync daemon in background
 let daemon = ClipboardDaemon(config: config, dexPath: dexPath)
 daemon.start()
 
-// 2. Register global hotkey Cmd+Option+T for Mouse & Keyboard control
-ControlManager.shared.registerHotKey()
-
 Logger.shared.log("Universal ADB Control Daemon started (Clipboard: Active, HotKey: Cmd+Opt+T)")
 
-// Run main event loop to listen for hotkey and dispatch events
+// 3. Run main event loop to listen for hotkey and dispatch events
 app.run()
 

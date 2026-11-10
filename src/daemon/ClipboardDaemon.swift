@@ -35,8 +35,6 @@ public final class ClipboardDaemon {
 
         connectToDevice()
         startPasteboardMonitoring()
-
-        RunLoop.main.run()
     }
 
     private func connectToDevice() {

@@ -45,17 +45,18 @@ public final class ControlManager {
         eventType.eventClass = OSType(kEventClassKeyboard)
         eventType.eventKind = OSType(kEventHotKeyPressed)
         
-        InstallEventHandler(GetApplicationEventTarget(), { (nextHandler, theEvent, userData) -> OSStatus in
+        let installErr = InstallEventHandler(GetEventDispatcherTarget(), { (nextHandler, theEvent, userData) -> OSStatus in
+            Logger.shared.log("HotKey Cmd+Option+T event triggered!")
             ControlManager.shared.handleHotKey()
             return noErr
         }, 1, &eventType, nil, nil)
         
         // kVK_ANSI_T = 0x11 (17) -> Cmd + Option + T
-        let status = RegisterEventHotKey(UInt32(kVK_ANSI_T), UInt32(cmdKey | optionKey), gMyHotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
-        if status == noErr {
+        let regErr = RegisterEventHotKey(UInt32(kVK_ANSI_T), UInt32(cmdKey | optionKey), gMyHotKeyID, GetEventDispatcherTarget(), 0, &hotKeyRef)
+        if regErr == noErr && installErr == noErr {
             Logger.shared.log("HotKey Cmd+Option+T registered successfully.")
         } else {
-            Logger.shared.log("Failed to register HotKey Cmd+Option+T (status \(status))")
+            Logger.shared.log("Failed to register HotKey Cmd+Option+T (installErr: \(installErr), regErr: \(regErr))")
         }
     }
     
