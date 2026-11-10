@@ -221,7 +221,7 @@ public final class ControlManager {
         app.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
         
         isControlling = true
-        showNotification(title: "Universal ADB Control", message: "Mengontrol Android (Layar penuh, ⌘⌥T untuk kembali)")
+        showNotification(title: "Universal ADB Control", message: "Mengontrol Android (Mode Emulator, ⌘⌥T untuk kembali)")
         Logger.shared.log("Control switched to Android.")
     }
     
@@ -292,12 +292,23 @@ public final class ControlManager {
             
             var env = ProcessInfo.processInfo.environment
             env["SDL_MAC_BACKGROUND_APP"] = "1"
+            let dylibPath = ("~/.universal-adb-control/helpers/libUniversalControlFrame.dylib" as NSString).expandingTildeInPath
+            if FileManager.default.fileExists(atPath: dylibPath) {
+                env["DYLD_INSERT_LIBRARIES"] = dylibPath
+            }
             p.environment = env
             
-            // Optimasi performa Wi-Fi & Fullscreen:
+            // Mode Windowed Emulator Android:
+            // - Bukan fullscreen (layar Mac tetap terlihat)
+            // - Ukuran smartphone proporsional (380x820)
+            // - Bezel melengkung & punch-hole camera dari overlay dylib
+            // - Always-on-top mengambang di atas desktop Mac
             p.arguments = [
                 "-s", targetSerial,
-                "--fullscreen",
+                "--window-width=380",
+                "--window-height=820",
+                "--window-borderless",
+                "--always-on-top",
                 "--stay-awake",
                 "--shortcut-mod=rctrl",
                 "--no-audio",
@@ -332,7 +343,7 @@ public final class ControlManager {
                             app.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
                             self.isControlling = true
                             self.isLaunching = false
-                            self.showNotification(title: "Universal ADB Control", message: "Mengontrol Android (Layar penuh, ⌘⌥T untuk kembali)")
+                            self.showNotification(title: "Universal ADB Control", message: "Mengontrol Android (Mode Emulator, ⌘⌥T untuk kembali)")
                         }
                         return
                     }

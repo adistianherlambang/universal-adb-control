@@ -83,5 +83,10 @@ EOF
 setup_display_bundle "${HELPERS_DIR}/UniversalADBControlDisplay.app"
 setup_display_bundle "${USER_HELPERS}/UniversalADBControlDisplay.app"
 
+# Salin libUniversalControlFrame.dylib ke helpers
+cp bin/libUniversalControlFrame.dylib "${USER_HELPERS}/libUniversalControlFrame.dylib"
+mkdir -p "${CONTENTS_DIR}/Frameworks"
+cp bin/libUniversalControlFrame.dylib "${CONTENTS_DIR}/Frameworks/libUniversalControlFrame.dylib"
+
 echo "==> Sukses! Aplikasi macOS bundle siap di ${BUNDLE_DIR}"
 echo "    Bisa dibuka dengan: open \"${BUNDLE_DIR}\""

@@ -235,11 +235,14 @@ public class AppState: ObservableObject {
                 let helperBin = ("~/.universal-adb-control/helpers/UniversalADBControlDisplay.app/Contents/MacOS/UniversalADBControlDisplay" as NSString).expandingTildeInPath
                 let exec = FileManager.default.isExecutableFile(atPath: helperBin) ? "\"\(helperBin)\"" : "scrcpy"
                 
-                let args = "-s \(target) --fullscreen --stay-awake --shortcut-mod=rctrl --no-audio --video-codec=\(self.videoCodec) --video-bit-rate=\(self.videoBitrate) --max-size=\(self.maxSize) --max-fps=\(self.maxFps) --video-buffer=\(self.videoBufferMs) --keyboard=uhid --mouse=uhid --window-title=\"Universal ADB Control\""
-                _ = self.runShell("export SDL_MAC_BACKGROUND_APP=1; nohup \(exec) \(args) > /dev/null 2>&1 &")
+                let dylibPath = ("~/.universal-adb-control/helpers/libUniversalControlFrame.dylib" as NSString).expandingTildeInPath
+                let dyldExport = FileManager.default.fileExists(atPath: dylibPath) ? "export DYLD_INSERT_LIBRARIES=\"\(dylibPath)\"; " : ""
+                
+                let args = "-s \(target) --window-width=380 --window-height=820 --window-borderless --always-on-top --stay-awake --shortcut-mod=rctrl --no-audio --video-codec=\(self.videoCodec) --video-bit-rate=\(self.videoBitrate) --max-size=\(self.maxSize) --max-fps=\(self.maxFps) --video-buffer=\(self.videoBufferMs) --keyboard=uhid --mouse=uhid --window-title=\"Universal ADB Control\""
+                _ = self.runShell("export SDL_MAC_BACKGROUND_APP=1; \(dyldExport)nohup \(exec) \(args) > /dev/null 2>&1 &")
                 DispatchQueue.main.async {
                     self.isScrcpyActive = true
-                    self.notify(message: "Mengontrol Android (\(target)) layar penuh. Tekan ⌘⌥T untuk kembali ke Mac.")
+                    self.notify(message: "Mengontrol Android (\(target)) mode emulator. Tekan ⌘⌥T untuk kembali ke Mac.")
                     self.refreshStatus()
                 }
             }

@@ -6,6 +6,9 @@ cd "$DIR"
 
 mkdir -p bin
 
+echo "==> Mengompilasi Device Frame Overlay dylib..."
+clang -dynamiclib -O2 -framework Cocoa src/frame/DeviceFrameOverlay.m -o bin/libUniversalControlFrame.dylib
+
 echo "==> Mengompilasi universal-adb-control-daemon..."
 swiftc -O \
     src/daemon/AdbTransport.swift \
