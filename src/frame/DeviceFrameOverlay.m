@@ -1,6 +1,8 @@
 #import <Cocoa/Cocoa.h>
 #import <objc/runtime.h>
 #import <signal.h>
+#import <sys/stat.h>
+#import <QuartzCore/QuartzCore.h>
 
 // MARK: - Swizzle NSApplication to force Accessory activation policy
 // Memastikan display helper TIDAK PERNAH muncul di macOS Dock atau App Switcher (Cmd+Tab)
@@ -103,132 +105,186 @@ static void swizzleActivationPolicy(void) {
 
 @end
 
+// MARK: - Lubang kamera di atas layar (mode terintegrasi)
+
+@interface UACCameraDotView : NSView
+@end
+
+@implementation UACCameraDotView
+- (NSView *)hitTest:(NSPoint)point { return nil; }
+- (void)drawRect:(NSRect)dirtyRect {
+    NSRect r = NSInsetRect(self.bounds, 1.0, 1.0);
+    [[NSColor colorWithCalibratedWhite:0.18 alpha:1.0] setStroke];
+    [[NSColor colorWithCalibratedWhite:0.02 alpha:1.0] setFill];
+    NSBezierPath *p = [NSBezierPath bezierPathWithOvalInRect:r];
+    [p fill];
+    [p setLineWidth:1.0];
+    [p stroke];
+}
+@end
+
 // MARK: - Window Management (Embedded vs Standalone)
 
 static pid_t gParentPid = 0;
-static CGFloat gOffsetX = 693.0;
-static CGFloat gOffsetY = 70.0;
-static CGFloat gWidth = 334.0;
-static CGFloat gHeight = 530.0;
 static BOOL gIsEmbedded = NO;
 static NSTimer *gSyncTimer = nil;
 
-static BOOL getParentWindowBounds(pid_t pid, CGRect *outBounds) {
-    CFArrayRef list = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
-    if (!list) return NO;
-    
-    BOOL found = NO;
-    CFIndex count = CFArrayGetCount(list);
-    for (CFIndex i = 0; i < count; i++) {
-        CFDictionaryRef dict = (CFDictionaryRef)CFArrayGetValueAtIndex(list, i);
-        CFNumberRef pidNum = (CFNumberRef)CFDictionaryGetValue(dict, kCGWindowOwnerPID);
-        if (pidNum) {
-            pid_t p = 0;
-            CFNumberGetValue(pidNum, kCFNumberIntType, &p);
-            if (p == pid) {
-                CFDictionaryRef boundsDict = (CFDictionaryRef)CFDictionaryGetValue(dict, kCGWindowBounds);
-                if (boundsDict) {
-                    CGRect b;
-                    CGRectMakeWithDictionaryRepresentation(boundsDict, &b);
-                    // Filter: hanya ambil jendela aplikasi utama (bukan menu bar status item atau dialog kecil)
-                    if (b.size.width >= 500 && b.size.height >= 400) {
-                        *outBounds = b;
-                        found = YES;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    CFRelease(list);
-    return found;
+// Geometri area layar di jendela GUI (dibaca dari host_rect.json)
+static CGFloat gOffsetX = 76.0;
+static CGFloat gOffsetY = 92.0;
+static CGFloat gWidth = 288.0;
+static CGFloat gHeight = 640.0;
+static CGFloat gRadius = 38.0;
+static BOOL gHostHidden = NO;
+static struct timespec gHostMtime = {0, 0};
+
+static const void *kUACConfiguredKey = &kUACConfiguredKey;
+
+static void refreshHostRect(void) {
+    static NSString *path = nil;
+    if (!path) path = [@"~/.universal-adb-control/host_rect.json" stringByExpandingTildeInPath];
+    struct stat st;
+    if (stat(path.fileSystemRepresentation, &st) != 0) return;
+    if (st.st_mtimespec.tv_sec == gHostMtime.tv_sec && st.st_mtimespec.tv_nsec == gHostMtime.tv_nsec) return;
+    gHostMtime = st.st_mtimespec;
+
+    NSData *data = [NSData dataWithContentsOfFile:path];
+    if (!data) return;
+    NSDictionary *d = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![d isKindOfClass:[NSDictionary class]]) return;
+    if (d[@"offsetX"]) gOffsetX = [d[@"offsetX"] doubleValue];
+    if (d[@"offsetY"]) gOffsetY = [d[@"offsetY"] doubleValue];
+    if (d[@"width"]) gWidth = [d[@"width"] doubleValue];
+    if (d[@"height"]) gHeight = [d[@"height"] doubleValue];
+    if (d[@"radius"]) gRadius = [d[@"radius"] doubleValue];
+    gHostHidden = [d[@"hidden"] boolValue];
 }
 
-static void readHostRectFile(CGFloat *outX, CGFloat *outY, CGFloat *outW, CGFloat *outH) {
-    NSString *path = [@"~/.universal-adb-control/host_rect.json" stringByExpandingTildeInPath];
-    NSData *data = [NSData dataWithContentsOfFile:path];
-    if (data) {
-        NSDictionary *dict = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-        if ([dict isKindOfClass:[NSDictionary class]]) {
-            NSNumber *x = dict[@"offsetX"];
-            NSNumber *y = dict[@"offsetY"];
-            NSNumber *w = dict[@"width"];
-            NSNumber *h = dict[@"height"];
-            if (x && y && w && h) {
-                *outX = [x doubleValue];
-                *outY = [y doubleValue];
-                *outW = [w doubleValue];
-                *outH = [h doubleValue];
+typedef struct {
+    BOOL found;
+    CGRect bounds;
+    CGWindowID number;
+    BOOL directlyAbove; // jendela kita tepat di atas jendela GUI
+} UACParentInfo;
+
+static UACParentInfo queryParent(CGWindowID mine) {
+    UACParentInfo info = {NO, CGRectZero, 0, NO};
+    CFArrayRef list = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+    if (!list) return info;
+
+    CFIndex count = CFArrayGetCount(list);
+    CFIndex lastLayer0 = -1; // indeks jendela layer-0 sebelumnya (urutan depan ke belakang)
+    CGWindowID prevNumber = 0;
+    for (CFIndex i = 0; i < count; i++) {
+        NSDictionary *w = (__bridge NSDictionary *)CFArrayGetValueAtIndex(list, i);
+        if ([w[(id)kCGWindowLayer] intValue] != 0) continue;
+        CGWindowID num = [w[(id)kCGWindowNumber] unsignedIntValue];
+        pid_t pid = [w[(id)kCGWindowOwnerPID] intValue];
+        if (pid == gParentPid) {
+            CGRect b;
+            CGRectMakeWithDictionaryRepresentation((__bridge CFDictionaryRef)w[(id)kCGWindowBounds], &b);
+            // Jendela utama GUI (abaikan popover / menu kecil)
+            if (b.size.width >= 300 && b.size.height >= 500) {
+                info.found = YES;
+                info.bounds = b;
+                info.number = num;
+                info.directlyAbove = (lastLayer0 >= 0 && prevNumber == mine);
+                break;
             }
         }
+        lastLayer0 = i;
+        prevNumber = num;
+    }
+    CFRelease(list);
+    return info;
+}
+
+static void layoutCameraDot(NSWindow *window) {
+    NSView *content = window.contentView;
+    if (!content) return;
+    UACCameraDotView *dot = nil;
+    for (NSView *sub in content.subviews) {
+        if ([sub isKindOfClass:[UACCameraDotView class]]) { dot = (UACCameraDotView *)sub; break; }
+    }
+    if (!dot) {
+        dot = [[UACCameraDotView alloc] initWithFrame:NSZeroRect];
+        [content addSubview:dot positioned:NSWindowAbove relativeTo:nil];
+    }
+    CGFloat scale = content.bounds.size.width / 288.0;
+    CGFloat d = 10.0 * scale;
+    dot.frame = NSMakeRect((content.bounds.size.width - d) / 2.0,
+                           content.bounds.size.height - d - 12.0 * scale, d, d);
+    content.layer.cornerRadius = gRadius;
+}
+
+static void syncEmbeddedWindow(NSWindow *window) {
+    // GUI sudah ditutup -> helper ikut berhenti
+    if (kill(gParentPid, 0) != 0) {
+        [gSyncTimer invalidate];
+        gSyncTimer = nil;
+        [NSApp terminate:nil];
+        return;
+    }
+
+    refreshHostRect();
+    UACParentInfo parent = queryParent((CGWindowID)window.windowNumber);
+    BOOL visible = parent.found && !gHostHidden;
+
+    if (visible) {
+        NSScreen *primary = [NSScreen screens].firstObject;
+        CGFloat screenH = primary ? primary.frame.size.height : 1080.0;
+        // Koordinat CG (kiri atas) -> Cocoa (kiri bawah)
+        CGFloat parentX = parent.bounds.origin.x;
+        CGFloat parentY = screenH - (parent.bounds.origin.y + parent.bounds.size.height);
+        NSRect target = NSMakeRect(round(parentX + gOffsetX), round(parentY + gOffsetY), round(gWidth), round(gHeight));
+        if (!NSEqualRects(window.frame, target)) {
+            [window setFrame:target display:NO animate:NO];
+            layoutCameraDot(window);
+        }
+
+        // Urutan jendela: selalu tepat di atas GUI, tapi tidak menutupi aplikasi lain
+        pid_t front = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;
+        BOOL ours = (front == gParentPid || front == getpid());
+        NSWindowLevel level = ours ? NSFloatingWindowLevel : NSNormalWindowLevel;
+        if (window.level != level) window.level = level;
+        if (!ours && !parent.directlyAbove) {
+            [window orderWindow:NSWindowAbove relativeTo:(NSInteger)parent.number];
+        }
+    }
+
+    CGFloat alpha = visible ? 1.0 : 0.0;
+    if (window.alphaValue != alpha) {
+        window.alphaValue = alpha;
+        window.ignoresMouseEvents = !visible;
     }
 }
 
 static void applyEmbeddedMode(NSWindow *window) {
     window.styleMask = NSWindowStyleMaskBorderless;
-    window.backgroundColor = [NSColor blackColor];
+    window.opaque = NO;
+    window.backgroundColor = [NSColor clearColor];
     window.hasShadow = NO;
     window.level = NSFloatingWindowLevel;
-    window.opaque = YES;
-    
-    NSView *contentView = window.contentView;
-    if (contentView) {
-        contentView.wantsLayer = YES;
-        contentView.layer.cornerRadius = 20.0;
-        contentView.layer.masksToBounds = YES;
+    window.collectionBehavior |= NSWindowCollectionBehaviorTransient | NSWindowCollectionBehaviorIgnoresCycle;
+
+    NSView *content = window.contentView;
+    if (content) {
+        content.wantsLayer = YES;
+        content.layer.cornerRadius = gRadius;
+        content.layer.cornerCurve = kCACornerCurveContinuous;
+        content.layer.masksToBounds = YES;
+        content.layer.backgroundColor = [NSColor blackColor].CGColor;
     }
-    
-    // Mulai sinkronisasi posisi dengan jendela GUI utama (60 Hz)
+    layoutCameraDot(window);
+
     if (!gSyncTimer) {
-        __block int missedFrames = 0;
-        gSyncTimer = [NSTimer scheduledTimerWithTimeInterval:0.016 repeats:YES block:^(NSTimer * _Nonnull timer) {
-            // Periksa apakah proses GUI utama masih hidup
-            if (kill(gParentPid, 0) != 0) {
-                [timer invalidate];
-                gSyncTimer = nil;
-                [NSApp terminate:nil];
-                return;
-            }
-            
-            CGRect parentCGBounds;
-            if (getParentWindowBounds(gParentPid, &parentCGBounds)) {
-                missedFrames = 0;
-                NSScreen *primaryScreen = [NSScreen screens].firstObject;
-                CGFloat screenHeight = primaryScreen ? primaryScreen.frame.size.height : 1080.0;
-                
-                // Konversi koordinat CG (top-left) ke Cocoa (bottom-left)
-                CGFloat parentCocoaY = screenHeight - (parentCGBounds.origin.y + parentCGBounds.size.height);
-                CGFloat parentCocoaX = parentCGBounds.origin.x;
-                
-                CGFloat offsetX = gOffsetX;
-                CGFloat offsetY = gOffsetY;
-                CGFloat width = gWidth;
-                CGFloat height = gHeight;
-                readHostRectFile(&offsetX, &offsetY, &width, &height);
-                
-                CGFloat targetX = parentCocoaX + offsetX;
-                CGFloat targetY = parentCocoaY + offsetY;
-                
-                NSRect currentFrame = window.frame;
-                NSRect targetFrame = NSMakeRect(targetX, targetY, width, height);
-                
-                if (fabs(currentFrame.origin.x - targetFrame.origin.x) > 0.5 ||
-                    fabs(currentFrame.origin.y - targetFrame.origin.y) > 0.5 ||
-                    fabs(currentFrame.size.width - targetFrame.size.width) > 0.5 ||
-                    fabs(currentFrame.size.height - targetFrame.size.height) > 0.5) {
-                    [window setFrame:targetFrame display:NO animate:NO];
-                }
-                
-                if (window.alphaValue < 1.0) {
-                    window.alphaValue = 1.0;
-                }
-            } else {
-                missedFrames++;
-                if (missedFrames > 60 && window.alphaValue > 0.0) {
-                    window.alphaValue = 0.0;
-                }
-            }
+        __weak NSWindow *weakWindow = window;
+        gSyncTimer = [NSTimer timerWithTimeInterval:1.0 / 60.0 repeats:YES block:^(NSTimer *timer) {
+            NSWindow *w = weakWindow;
+            if (w) syncEmbeddedWindow(w);
         }];
+        // Tetap berjalan saat GUI sedang di-resize / di-drag
+        [[NSRunLoop mainRunLoop] addTimer:gSyncTimer forMode:NSRunLoopCommonModes];
     }
 }
 
@@ -258,10 +314,6 @@ static void applyStandaloneMode(NSWindow *window) {
     contentView.layer.cornerRadius = 32.0;
     contentView.layer.masksToBounds = YES;
     
-    for (NSView *sub in contentView.subviews) {
-        if ([sub isKindOfClass:[DeviceFrameOverlayView class]]) return;
-    }
-    
     DeviceFrameOverlayView *overlay = [[DeviceFrameOverlayView alloc] initWithFrame:contentView.bounds];
     overlay.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [contentView addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
@@ -272,15 +324,17 @@ static void applyStandaloneMode(NSWindow *window) {
 }
 
 static void configureDisplayWindow(NSWindow *window) {
-    if (!window) return;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [window setTitle:@"Universal ADB Control"];
-        if (gIsEmbedded) {
-            applyEmbeddedMode(window);
-        } else {
-            applyStandaloneMode(window);
-        }
-    });
+    if (!window || !window.contentView) return;
+    // Konfigurasi hanya sekali per jendela (NSWindowDidUpdate dipanggil sangat sering)
+    if (objc_getAssociatedObject(window, kUACConfiguredKey)) return;
+    objc_setAssociatedObject(window, kUACConfiguredKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    [window setTitle:@"Universal ADB Control"];
+    if (gIsEmbedded) {
+        applyEmbeddedMode(window);
+    } else {
+        applyStandaloneMode(window);
+    }
 }
 
 static void scheduleWindowCheck(int attemptsLeft) {
@@ -306,25 +360,11 @@ static void initUniversalControlFrame(void) {
     // Selalu set process name ke "Universal ADB Control"
     [[NSProcessInfo processInfo] setValue:@"Universal ADB Control" forKey:@"processName"];
     
-    // Periksa apakah berjalan dalam mode terintegrasi (Embedded dalam GUI)
+    // Mode terintegrasi (layar menempel di dalam jendela GUI)
     const char *parentPidStr = getenv("UAC_PARENT_PID");
     if (parentPidStr && strlen(parentPidStr) > 0) {
         gParentPid = (pid_t)atoi(parentPidStr);
-        if (gParentPid > 0) {
-            gIsEmbedded = YES;
-            
-            const char *offXStr = getenv("UAC_OFFSET_X");
-            if (offXStr) gOffsetX = (CGFloat)atof(offXStr);
-            
-            const char *offYStr = getenv("UAC_OFFSET_Y");
-            if (offYStr) gOffsetY = (CGFloat)atof(offYStr);
-            
-            const char *wStr = getenv("UAC_WIDTH");
-            if (wStr) gWidth = (CGFloat)atof(wStr);
-            
-            const char *hStr = getenv("UAC_HEIGHT");
-            if (hStr) gHeight = (CGFloat)atof(hStr);
-        }
+        gIsEmbedded = gParentPid > 0;
     }
     
     [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidBecomeKeyNotification

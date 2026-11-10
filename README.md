@@ -6,10 +6,10 @@ Aplikasi kontrol nirkabel & kabel untuk mengendalikan HP Android dari Mac secara
 
 ## Fitur Utama
 
-- **GUI & Menu Bar macOS**: Antarmuka native SwiftUI/AppKit modern dengan kontrol status bar di Menu Bar macOS.
+- **Desain Liquid Glass Minimalis**: Antarmuka transparan modern menggunakan material *Liquid Glass* native macOS, tanpa badge warna-warni, tanpa dinding teks yang membingungkan, fokus murni pada pengalaman interaksi perangkat.
 - **Layar Android Menyatu Langsung (Unified Studio Window)**:
-  - Layar HP dengan bezel bodi smartphone, punch-hole camera, dan speaker grill terintegrasi langsung di dalam jendela Universal ADB Control (tidak ada jendela terpisah).
-  - Tombol kontrol fisik Android interaktif: Back (◀), Home (●), Recents (■), Power (⏻), Volume Turun & Naik.
+  - Layar HP dengan bezel bodi smartphone melengkung, punch-hole camera, dan tombol samping fisik (Volume & Power) terintegrasi langsung di dalam jendela Universal ADB Control (tidak ada jendela terpisah).
+  - Dock kontrol kaca melayang interaktif: Kembali (◀), Beranda (●), Aplikasi Terkini (■), dan tombol putar/henti instan.
   - Zero Presence: scrcpy terbungkus 100% dan tidak pernah muncul di macOS Dock, App Switcher (`⌘+Tab`), maupun Menu Bar.
 - **Universal Clipboard Sync**: Sinkronisasi clipboard real-time 2 arah (Teks, Gambar, Berkas) antara macOS dan Android via socket TCP berkecepatan tinggi.
 - **Seamless Mouse & Keyboard Control**: Alihkan kendali mouse dan keyboard ke HP Android secara instan dengan pintasan global `⌘ + ⌥ + T` (Command + Option + T).

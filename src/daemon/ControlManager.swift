@@ -153,9 +153,116 @@ public final class ControlManager {
         }
     }
     
+    // MARK: - Mode terintegrasi (layar HP menempel di jendela GUI)
+
+    private static let guiBundleId = "com.universal.adb.control.gui"
+
+    private var isGuiRunning: Bool {
+        !NSRunningApplication.runningApplications(withBundleIdentifier: ControlManager.guiBundleId).isEmpty
+    }
+
+    private func embeddedHelperPid() -> pid_t? {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        p.arguments = ["-f", "UniversalADBControlDisplay.app/Contents/MacOS"]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        let out = String(data: data, encoding: .utf8) ?? ""
+        return out.split(separator: "\n").compactMap { pid_t($0.trimmingCharacters(in: .whitespaces)) }.first
+    }
+
+    private func helperWindowCenter(pid: pid_t) -> CGPoint? {
+        let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+        for w in list where (w[kCGWindowOwnerPID as String] as? pid_t) == pid {
+            if let dict = w[kCGWindowBounds as String] as? NSDictionary,
+               let rect = CGRect(dictionaryRepresentation: dict), rect.width > 100 {
+                return CGPoint(x: rect.midX, y: rect.midY)
+            }
+        }
+        return nil
+    }
+
+    private func rememberMacContext() {
+        let front = NSWorkspace.shared.frontmostApplication
+        if front?.bundleIdentifier != ControlManager.guiBundleId,
+           front?.processIdentifier != embeddedHelperPid() {
+            lastFrontmostApp = front
+        }
+        savedMousePos = CGEvent(source: nil)?.location
+    }
+
+    private func focusEmbedded(pid: pid_t) {
+        executeAppleScript("""
+        tell application "System Events"
+            set frontmost of (first process whose bundle identifier is "\(ControlManager.guiBundleId)") to true
+            set frontmost of (first process whose unix id is \(pid)) to true
+        end tell
+        """)
+        // Pindahkan kursor ke tengah layar HP agar mouse langsung mengontrol Android
+        if let center = helperWindowCenter(pid: pid) {
+            CGWarpMouseCursorPosition(center)
+        }
+        isControlling = true
+        Logger.shared.log("Control switched to embedded Android screen.")
+    }
+
+    private func returnToMac() {
+        isControlling = false
+        if let pos = savedMousePos {
+            CGWarpMouseCursorPosition(pos)
+        }
+        if let prev = lastFrontmostApp, !prev.isTerminated {
+            executeAppleScript("""
+            tell application "System Events" to set frontmost of (first process whose unix id is \(prev.processIdentifier)) to true
+            """)
+        }
+        Logger.shared.log("Control switched back to Mac.")
+    }
+
+    private func toggleEmbedded() {
+        if let pid = embeddedHelperPid() {
+            if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid {
+                returnToMac()
+            } else {
+                rememberMacContext()
+                if let serial = getConnectedAdbDevices().first(where: { $0.state == "device" })?.serial {
+                    disableOnScreenKeyboard(serial: serial)
+                }
+                focusEmbedded(pid: pid)
+            }
+            return
+        }
+
+        // Layar belum aktif: minta GUI menyalakannya, lalu fokuskan
+        rememberMacContext()
+        isLaunching = true
+        DistributedNotificationCenter.default().postNotificationName(
+            Notification.Name("com.universal.adb.control.start"), object: nil, userInfo: nil, deliverImmediately: true)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            var found: pid_t?
+            for _ in 0..<40 {
+                Thread.sleep(forTimeInterval: 0.2)
+                if let pid = self.embeddedHelperPid(), self.helperWindowCenter(pid: pid) != nil {
+                    found = pid
+                    break
+                }
+            }
+            DispatchQueue.main.async {
+                self.isLaunching = false
+                if let pid = found { self.focusEmbedded(pid: pid) }
+            }
+        }
+    }
+
     public func toggleControl() {
-        if isLaunching {
-            showNotification(title: "Universal ADB Control", message: "Sedang menghubungkan ke perangkat...")
+        if isLaunching { return }
+        if isGuiRunning {
+            toggleEmbedded()
             return
         }
         

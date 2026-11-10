@@ -7,7 +7,7 @@ cd "$DIR"
 mkdir -p bin
 
 echo "==> Mengompilasi Device Frame Overlay dylib..."
-clang -arch arm64 -arch arm64e -dynamiclib -O2 -framework Cocoa -framework CoreGraphics src/frame/DeviceFrameOverlay.m -o bin/libUniversalControlFrame.dylib
+clang -arch arm64 -arch arm64e -dynamiclib -O2 -fobjc-arc -framework Cocoa -framework CoreGraphics -framework QuartzCore src/frame/DeviceFrameOverlay.m -o bin/libUniversalControlFrame.dylib
 
 echo "==> Mengompilasi UniversalADBControlDisplay helper binary..."
 clang -arch arm64 -arch arm64e -O2 src/helper/UniversalADBControlDisplay.c -o bin/UniversalADBControlDisplay
@@ -23,7 +23,7 @@ swiftc -O \
     -o bin/universal-adb-control-daemon
 
 echo "==> Mengompilasi Universal ADB Control GUI..."
-swiftc -O -parse-as-library \
+swiftc -O -parse-as-library -target arm64-apple-macos26.0 \
     src/gui/AppState.swift \
     src/gui/MainView.swift \
     src/gui/main.swift \
