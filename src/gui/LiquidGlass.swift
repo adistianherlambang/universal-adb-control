@@ -47,7 +47,7 @@ public struct LiquidGlassModifier<S: InsettableShape>: ViewModifier {
         content
             // 1. HARDWARE-ACCELERATED NATIVE macOS 27 LIQUID GLASS
             .glassEffect(nativeGlass, in: shape)
-            // 2. REFRACTION & DISPERSION: Bevel Rim (Halus & tenang saat diam, ditebalkan saat hover)
+            // 2. REFRACTION & DISPERSION: Bevel Rim (Halus saat diam, ditebalkan saat hover)
             .overlay {
                 if refFactor > 0 {
                     let rimAlpha = isHovered ? (0.55 * refFactor) : (0.07 * refFactor)
@@ -85,6 +85,7 @@ public struct LiquidGlassModifier<S: InsettableShape>: ViewModifier {
                     }
                 }
             }
+            .allowsHitTesting(false) // Bebaskan hit-testing: overlay grafis tidak boleh menyerap klik!
             // 3. SPLAY: Specular Flare Sheen (Hanya menyala saat hover)
             .overlay {
                 if splayFactor > 0 && isHovered {
@@ -101,10 +102,9 @@ public struct LiquidGlassModifier<S: InsettableShape>: ViewModifier {
                             endRadius: flareRadius
                         )
                     )
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
                 }
             }
+            .allowsHitTesting(false) // Bebaskan hit-testing: pendaran cahaya tidak boleh menyerap klik!
             // 4. DEPTH: Ambient Elevation Shadow (Tenang saat diam, terangkat halus saat hover)
             .shadow(
                 color: Color.black.opacity((isHovered ? 0.30 : 0.06) * depthFactor),
@@ -112,14 +112,28 @@ public struct LiquidGlassModifier<S: InsettableShape>: ViewModifier {
                 x: 0,
                 y: (isHovered ? 7 : 1.5) * depthFactor
             )
-            .contentShape(shape)
             .onHover { hovering in
                 guard isInteractive else { return }
-                withAnimation(.smooth(duration: 0.22)) {
+                withAnimation(.smooth(duration: 0.18)) {
                     isHovered = hovering
                 }
             }
     }
+}
+
+// MARK: - ButtonStyle Interaktif Taktil Cepat (Responsif Seketika)
+public struct InteractiveButtonStyle: ButtonStyle {
+    public init() {}
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .opacity(configuration.isPressed ? 0.80 : 1.0)
+            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+    }
+}
+
+public extension ButtonStyle where Self == InteractiveButtonStyle {
+    static var interactiveGlass: InteractiveButtonStyle { InteractiveButtonStyle() }
 }
 
 public extension View {

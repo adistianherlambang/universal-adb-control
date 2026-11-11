@@ -50,8 +50,9 @@ struct MainView: View {
                 }
                 .padding(.horizontal, 14)
                 .frame(height: 32)
+                .contentShape(Capsule())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.interactiveGlass)
             .liquidGlass(in: Capsule(), interactive: true)
             .popover(isPresented: $showDevices, arrowEdge: .bottom) {
                 DevicePopover(state: state, isPresented: $showDevices)
@@ -63,8 +64,9 @@ struct MainView: View {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 13, weight: .medium))
                     .frame(width: 32, height: 32)
+                    .contentShape(Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.interactiveGlass)
             .liquidGlass(in: Circle(), interactive: true)
             .help("Pengaturan")
             .popover(isPresented: $showSettings, arrowEdge: .bottom) {
@@ -93,8 +95,9 @@ struct MainView: View {
                         .font(.system(size: 15, weight: .semibold))
                         .contentTransition(.symbolEffect(.replace))
                         .frame(width: 48, height: 48)
+                        .contentShape(Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.interactiveGlass)
                 .liquidGlass(in: Circle(), interactive: true, tint: state.isStreaming ? nil : .accentColor)
                 .disabled(state.activeDevice == nil)
                 .help(state.isStreaming ? "Berhenti" : "Mulai  ⌘⌥T")
@@ -117,6 +120,7 @@ struct MainView: View {
                 .liquidGlass(in: Capsule())
                 .padding(.bottom, 84)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+                .allowsHitTesting(false)
         }
     }
 }
@@ -142,7 +146,7 @@ private struct DockIconButton: View {
                 }
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.interactiveGlass)
         .onHover { hover in
             withAnimation(.smooth(duration: 0.18)) {
                 isHovered = hover
@@ -223,8 +227,9 @@ private struct PhoneView: View {
                         .font(.system(size: 24, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(width: 72, height: 72)
+                        .contentShape(Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.interactiveGlass)
                 .liquidGlass(in: Circle(), interactive: true)
                 Text("⌘⌥T")
                     .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -236,8 +241,9 @@ private struct PhoneView: View {
                     .font(.system(size: 22, weight: .medium))
                     .foregroundStyle(.white)
                     .frame(width: 64, height: 64)
+                    .contentShape(Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.interactiveGlass)
             .liquidGlass(in: Circle(), interactive: true)
             .help("Hubungkan perangkat")
         }
@@ -312,8 +318,9 @@ private struct DevicePopover: View {
                     Image(systemName: "arrow.right")
                         .font(.system(size: 12, weight: .bold))
                         .frame(width: 32, height: 32)
+                        .contentShape(Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.interactiveGlass)
                 .liquidGlass(in: Circle(), interactive: true, tint: .accentColor)
                 .disabled(address.trimmingCharacters(in: .whitespaces).isEmpty)
             }
