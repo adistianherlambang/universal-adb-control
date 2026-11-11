@@ -257,43 +257,44 @@ public final class ControlManager {
         if isLaunching { return }
         isLaunching = true
 
-        let targetUrl: URL? = {
-            let appUrl = URL(fileURLWithPath: "/Applications/Universal ADB Control.app")
-            if FileManager.default.fileExists(atPath: appUrl.path) { return appUrl }
-            let homeAppUrl = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/code/adb-control/bin/Universal ADB Control.app")
-            if FileManager.default.fileExists(atPath: homeAppUrl.path) { return homeAppUrl }
-            return nil
-        }()
+        let candidatePaths = [
+            "/Applications/Universal ADB Control.app",
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/Universal ADB Control.app").path,
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/code/adb-control/bin/Universal ADB Control.app").path
+        ]
 
-        let launchBlock = { [weak self] in
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                guard let self = self else { return }
-                for _ in 0..<40 {
-                    Thread.sleep(forTimeInterval: 0.2)
-                    if self.isGuiRunning {
-                        DispatchQueue.main.async {
-                            self.isLaunching = false
-                            self.toggleEmbedded()
-                        }
-                        return
-                    }
-                }
-                DispatchQueue.main.async {
-                    self.isLaunching = false
-                }
+        var targetPath: String?
+        for path in candidatePaths {
+            if FileManager.default.fileExists(atPath: path) {
+                targetPath = path
+                break
             }
         }
 
-        if let url = targetUrl {
-            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, err in
-                if err != nil {
-                    _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/open"), arguments: ["-a", "Universal ADB Control"])
-                }
-                launchBlock()
-            }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        if let target = targetPath {
+            p.arguments = [target]
         } else {
-            _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/open"), arguments: ["-a", "Universal ADB Control"])
-            launchBlock()
+            p.arguments = ["-a", "Universal ADB Control"]
+        }
+        try? p.run()
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            for _ in 0..<40 {
+                Thread.sleep(forTimeInterval: 0.2)
+                if self.isGuiRunning {
+                    DispatchQueue.main.async {
+                        self.isLaunching = false
+                        self.toggleEmbedded()
+                    }
+                    return
+                }
+            }
+            DispatchQueue.main.async {
+                self.isLaunching = false
+            }
         }
     }
 

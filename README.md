@@ -76,14 +76,14 @@ universal-adb-control/
   - **Sinkronisasi Posisi 60 FPS**: Mengunci ukuran dan koordinat jendela scrcpy tepat di atas mockup layar ponsel pada GUI (`syncEmbeddedWindow`).
   - **Punch-Hole Camera**: Menggambar kamera punch-hole dinamis di atas layar (`UACCameraDotView`).
   - **Focus Lock & Anti-Leak**: Men-swizzle `canBecomeKeyWindow` dan `canBecomeMainWindow` pada `NSWindow` serta mengaktifkan proses secara instan saat layar diklik (`uac_sendEvent:`) sehingga 100% input keyboard dan trackpad masuk ke Android tanpa bocor ke Mac.
-  - **Pintasan Keluar Instan**: Mengintersepsi `⌘Q` dan `⌘W` di tingkat Cocoa event loop untuk menghentikan display helper dan aplikasi induk secara serempak.
+  - **Pintasan Background**: Mengintersepsi `⌘Q` dan `⌘W` di tingkat Cocoa event loop untuk menghentikan display helper dan menyembunyikan jendela ke background tanpa mematikan aplikasi utama.
   - **Anti-Standalone Guard**: Menolak peluncuran jendela scrcpy mengambang di luar GUI (memastikan hanya satu layar yang aktif di dalam GUI).
 
 #### 5. Modul Liquid Glass GUI (`src/gui/`)
 - **`src/gui/main.swift`**: Titik masuk aplikasi GUI macOS AppKit (`@main UniversalControlApp` & `AppDelegate`):
   - Mengonfigurasi `NSApp.mainMenu` lengkap (App, Edit, Window) agar pintasan keyboard native macOS (`⌘Q`, `⌘W`, `⌘C`, `⌘V`, `⌘Z`) aktif di seluruh komponen.
   - Membangun jendela transparan berlatar material Liquid Glass (`NSVisualEffectView`).
-  - Memasang monitor event lokal untuk penutupan aplikasi dan integrasi menu bar status icon.
+  - Menjaga aplikasi tetap aktif di background Menu Bar (status item) saat jendela ditutup, dan mendaftarkan hotkey global `⌘⌥T` untuk membangkitkan jendela seketika.
 - **`src/gui/AppState.swift`**: Pusat manajemen state SwiftUI (`ObservableObject`):
   - Mendeteksi perangkat Android USB & Wi-Fi dan memuat preferensi streaming.
   - Menghitung koordinat piksel area layar ponsel dan menyimpannya ke `~/.universal-adb-control/host_rect.json`.

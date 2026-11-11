@@ -1,15 +1,18 @@
 import Cocoa
 import SwiftUI
+import Carbon
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var window: NSWindow?
     let appState = AppState()
     var statusItem: NSStatusItem?
+    var hotKeyRef: EventHotKeyRef?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMainMenu()
         setupMenuBar()
         setupEventMonitors()
+        setupGlobalHotKey()
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 440, height: 820),
@@ -48,7 +51,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
         self.window = window
 
-        // Pintasan ⌘⌥T dari daemon meminta GUI menyalakan layar terintegrasi
+        // Pintasan ⌘⌥T atau sinyal bangun dari daemon
         DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("com.universal.adb.control.start"), object: nil, queue: .main
         ) { [weak self] _ in
@@ -56,7 +59,50 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self?.appState.startDisplay()
         }
 
+        // Permintaan sembunyikan ke background dari helper scrcpy
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.universal.adb.control.hide"), object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.hideToBackground()
+        }
+
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func setupGlobalHotKey() {
+        var gMyHotKeyID = EventHotKeyID()
+        gMyHotKeyID.signature = OSType(0x55414347) // "UACG"
+        gMyHotKeyID.id = UInt32(200)
+
+        var eventType = EventTypeSpec()
+        eventType.eventClass = OSType(kEventClassKeyboard)
+        eventType.eventKind = OSType(kEventHotKeyPressed)
+
+        InstallEventHandler(GetEventDispatcherTarget(), { (nextHandler, theEvent, userData) -> OSStatus in
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: Notification.Name("com.universal.adb.control.toggleHotKey"), object: nil)
+            }
+            return noErr
+        }, 1, &eventType, nil, nil)
+
+        // kVK_ANSI_T = 0x11 (17) -> Cmd + Option + T
+        RegisterEventHotKey(UInt32(kVK_ANSI_T), UInt32(cmdKey | optionKey), gMyHotKeyID, GetEventDispatcherTarget(), 0, &hotKeyRef)
+
+        NotificationCenter.default.addObserver(forName: Notification.Name("com.universal.adb.control.toggleHotKey"), object: nil, queue: .main) { [weak self] _ in
+            self?.handleGlobalHotKey()
+        }
+    }
+
+    @objc func handleGlobalHotKey() {
+        guard let win = window else { return }
+        if win.isVisible && NSApp.isActive && appState.isStreaming {
+            hideToBackground()
+        } else {
+            showWindow()
+            if !appState.isStreaming {
+                appState.startDisplay()
+            }
+        }
     }
 
     private func setupMainMenu() {
@@ -75,7 +121,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         appMenu.addItem(hideOthersItem)
         appMenu.addItem(showAllItem)
         appMenu.addItem(.separator())
-        let quitItem = NSMenuItem(title: "Keluar Universal ADB Control", action: #selector(quitApp), keyEquivalent: "q")
+        let hideToBgItem = NSMenuItem(title: "Sembunyikan ke Background", action: #selector(hideToBackground), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Keluar Sepenuhnya", action: #selector(quitAppCompletely), keyEquivalent: "Q")
+        quitItem.keyEquivalentModifierMask = [.command, .shift]
+        appMenu.addItem(hideToBgItem)
         appMenu.addItem(quitItem)
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
@@ -97,7 +146,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // 3. Menu Jendela
         let windowMenuItem = NSMenuItem()
         let windowMenu = NSMenu(title: "Jendela")
-        let closeItem = NSMenuItem(title: "Tutup Jendela", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        let closeItem = NSMenuItem(title: "Tutup ke Background", action: #selector(hideToBackground), keyEquivalent: "w")
         let miniItem = NSMenuItem(title: "Kecilkan", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         windowMenu.addItem(closeItem)
         windowMenu.addItem(miniItem)
@@ -108,17 +157,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func setupEventMonitors() {
-        // Intersepsi lokal memastikan ⌘Q dan ⌘W selalu aktif di seluruh komponen UI
+        // Intersepsi lokal memastikan ⌘Q dan ⌘W selalu menyembunyikan jendela ke background
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if flags.contains(.command) {
                 let key = event.charactersIgnoringModifiers?.lowercased()
-                if key == "q" {
-                    self?.quitApp()
-                    return nil
-                }
-                if key == "w" {
-                    self?.window?.performClose(nil)
+                if key == "q" || key == "w" {
+                    self?.hideToBackground()
                     return nil
                 }
             }
@@ -131,10 +176,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem?.button?.image = NSImage(systemSymbolName: "iphone", accessibilityDescription: "Universal ADB Control")
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Buka", action: #selector(showWindow), keyEquivalent: "o"))
-        menu.addItem(NSMenuItem(title: "Mulai / Berhenti", action: #selector(toggleControl), keyEquivalent: "t"))
+        menu.addItem(NSMenuItem(title: "Buka Jendela", action: #selector(showWindow), keyEquivalent: "o"))
+        menu.addItem(NSMenuItem(title: "Mulai / Berhenti Layar (⌘⌥T)", action: #selector(toggleControl), keyEquivalent: "t"))
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Keluar", action: #selector(quitApp), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "Sembunyikan ke Background", action: #selector(hideToBackground), keyEquivalent: "w"))
+        menu.addItem(NSMenuItem(title: "Keluar Sepenuhnya", action: #selector(quitAppCompletely), keyEquivalent: "q"))
         statusItem?.menu = menu
     }
 
@@ -149,7 +195,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         appState.toggleDisplay()
     }
 
-    @objc func quitApp() {
+    @objc func hideToBackground() {
+        appState.stopDisplay()
+        window?.orderOut(nil)
+    }
+
+    @objc func quitAppCompletely() {
         appState.stopDisplay()
         _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/pkill"), arguments: ["-f", "UniversalADBControlDisplay"])
         NSApplication.shared.terminate(nil)
@@ -158,12 +209,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        hideToBackground()
+        return false
+    }
+
     func windowWillClose(_ notification: Notification) {
         appState.stopDisplay()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        return true
+        return false
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

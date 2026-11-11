@@ -327,23 +327,13 @@ static void initUniversalControlFrame(void) {
         return event;
     }];
 
-    // Intersepsi Cmd+Q dan Cmd+W saat fokus berada di dalam layar scrcpy
+    // Intersepsi Cmd+Q dan Cmd+W saat fokus berada di dalam layar scrcpy: sembunyikan ke background
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent * _Nullable(NSEvent * _Nonnull event) {
         NSEventModifierFlags flags = (event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask);
         if ((flags & NSEventModifierFlagCommand) != 0) {
             NSString *chars = [event charactersIgnoringModifiers].lowercaseString;
-            if ([chars isEqualToString:@"q"]) {
-                if (gParentPid > 0) {
-                    kill(gParentPid, SIGTERM);
-                }
-                [NSApp terminate:nil];
-                exit(0);
-                return nil;
-            }
-            if ([chars isEqualToString:@"w"]) {
-                if (gParentPid > 0) {
-                    kill(gParentPid, SIGTERM);
-                }
+            if ([chars isEqualToString:@"q"] || [chars isEqualToString:@"w"]) {
+                [[NSDistributedNotificationCenter defaultCenter] postNotificationName:@"com.universal.adb.control.hide" object:nil];
                 [NSApp terminate:nil];
                 exit(0);
                 return nil;
