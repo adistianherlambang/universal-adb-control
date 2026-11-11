@@ -105,14 +105,7 @@ struct MainView: View {
     }
 
     private func dockButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 14, weight: .semibold))
-                .frame(width: 40, height: 40)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
+        DockIconButton(symbol: symbol, help: help, action: action)
     }
 
     @ViewBuilder private var toast: some View {
@@ -125,6 +118,37 @@ struct MainView: View {
                 .padding(.bottom, 84)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
         }
+    }
+}
+
+private struct DockIconButton: View {
+    let symbol: String
+    let help: String
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(isHovered ? .primary : .secondary)
+                .frame(width: 40, height: 40)
+                .background {
+                    if isHovered {
+                        Circle()
+                            .fill(Color.white.opacity(0.12))
+                            .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 0.8))
+                    }
+                }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover in
+            withAnimation(.smooth(duration: 0.18)) {
+                isHovered = hover
+            }
+        }
+        .help(help)
     }
 }
 

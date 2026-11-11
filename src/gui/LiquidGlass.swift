@@ -1,7 +1,7 @@
 import SwiftUI
 
 // MARK: - Konfigurasi Liquid Glass macOS 27 (Figma & Native Engine Parameters)
-// Anda dapat mengubah langsung angka parameter di bawah ini (skala 0 - 100):
+// Nilai di bawah ini dapat Anda sesuaikan langsung (skala 0 - 100):
 public struct GlassConfig {
     /// 1. REFRACTION (0 - 100): Ketegasan pembiasan & pantulan specular rim pada tepi lensa kaca
     public static var refraction: Double = 100.0
@@ -12,10 +12,10 @@ public struct GlassConfig {
     /// 3. FROST (0 - 100): Keburaman permukaan (< 20 menggunakan Glass.clear murni khas macOS 27)
     public static var frost: Double = 5.0
 
-    /// 4. DISPERSION (0 - 100): Pendaran prisma kromatik halus pada pantulan tepi pembiasan
+    /// 4. DISPERSION (0 - 100): Pendaran prisma kromatik saat kursor hover (efek menebal saat disorot)
     public static var dispersion: Double = 20.0
 
-    /// 5. SPLAY (0 - 100): Lebar sebaran pendaran kilau cahaya (specular flare sheen) di permukaan kaca
+    /// 5. SPLAY (0 - 100): Lebar sebaran pendaran kilau cahaya saat kursor hover
     public static var splay: Double = 100.0
 }
 
@@ -47,46 +47,52 @@ public struct LiquidGlassModifier<S: InsettableShape>: ViewModifier {
         content
             // 1. HARDWARE-ACCELERATED NATIVE macOS 27 LIQUID GLASS
             .glassEffect(nativeGlass, in: shape)
-            // 2. REFRACTION & DISPERSION: Specular Bevel Rim
+            // 2. REFRACTION & DISPERSION: Bevel Rim (Halus & tenang saat diam, ditebalkan saat hover)
             .overlay {
                 if refFactor > 0 {
-                    let rimAlpha = (isHovered ? 0.35 : 0.20) * refFactor
-                    if dispFactor > 0.05 {
-                        // Dispersi prisma kromatik halus khas optik premium
+                    let rimAlpha = isHovered ? (0.55 * refFactor) : (0.07 * refFactor)
+                    let strokeWidth: CGFloat = isHovered ? 1.2 : 0.5
+
+                    if isHovered && dispFactor > 0.05 {
+                        // Dispersi prisma kromatik hanya menebal & memancar saat kursor hover
                         shape.strokeBorder(
                             LinearGradient(
                                 stops: [
-                                    .init(color: Color.white.opacity(rimAlpha * 1.5), location: 0.0),
-                                    .init(color: Color(red: 0.55, green: 0.85, blue: 1.0).opacity(rimAlpha * 0.85 * dispFactor), location: 0.25),
-                                    .init(color: Color(red: 0.80, green: 0.65, blue: 1.0).opacity(rimAlpha * 0.75 * dispFactor), location: 0.50),
-                                    .init(color: Color(red: 1.0, green: 0.75, blue: 0.50).opacity(rimAlpha * 0.65 * dispFactor), location: 0.75),
+                                    .init(color: Color.white.opacity(rimAlpha * 1.4), location: 0.0),
+                                    .init(color: Color(red: 0.55, green: 0.85, blue: 1.0).opacity(rimAlpha * 0.90 * dispFactor), location: 0.25),
+                                    .init(color: Color(red: 0.80, green: 0.65, blue: 1.0).opacity(rimAlpha * 0.80 * dispFactor), location: 0.50),
+                                    .init(color: Color(red: 1.0, green: 0.75, blue: 0.50).opacity(rimAlpha * 0.70 * dispFactor), location: 0.75),
                                     .init(color: Color.white.opacity(rimAlpha * 0.35), location: 1.0)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             ),
-                            lineWidth: 0.8
+                            lineWidth: strokeWidth
                         )
                     } else {
+                        // Saat diam: garis tepi monokrom sangat halus, tipis dan tidak mengganggu mata
                         shape.strokeBorder(
                             LinearGradient(
-                                colors: [Color.white.opacity(rimAlpha * 1.4), Color.white.opacity(rimAlpha * 0.25)],
+                                colors: [
+                                    Color.white.opacity(rimAlpha * 1.2),
+                                    Color.white.opacity(rimAlpha * 0.15)
+                                ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             ),
-                            lineWidth: 0.8
+                            lineWidth: strokeWidth
                         )
                     }
                 }
             }
-            // 3. SPLAY: Specular Flare Sheen
+            // 3. SPLAY: Specular Flare Sheen (Hanya menyala saat hover)
             .overlay {
-                if splayFactor > 0 {
+                if splayFactor > 0 && isHovered {
                     let flareRadius = CGFloat(20.0 + 45.0 * splayFactor)
                     shape.fill(
                         RadialGradient(
                             colors: [
-                                Color.white.opacity((isHovered ? 0.18 : 0.10) * splayFactor),
+                                Color.white.opacity(0.20 * splayFactor),
                                 Color.white.opacity(0.02 * splayFactor),
                                 Color.clear
                             ],
@@ -96,19 +102,20 @@ public struct LiquidGlassModifier<S: InsettableShape>: ViewModifier {
                         )
                     )
                     .allowsHitTesting(false)
+                    .transition(.opacity)
                 }
             }
-            // 4. DEPTH: Ambient Elevation Shadow
+            // 4. DEPTH: Ambient Elevation Shadow (Tenang saat diam, terangkat halus saat hover)
             .shadow(
-                color: Color.black.opacity((isHovered ? 0.25 : 0.15) * depthFactor),
-                radius: (isHovered ? 16 : 8) * depthFactor,
+                color: Color.black.opacity((isHovered ? 0.30 : 0.06) * depthFactor),
+                radius: (isHovered ? 14 : 3) * depthFactor,
                 x: 0,
-                y: (isHovered ? 8 : 4) * depthFactor
+                y: (isHovered ? 7 : 1.5) * depthFactor
             )
             .contentShape(shape)
             .onHover { hovering in
                 guard isInteractive else { return }
-                withAnimation(.smooth(duration: 0.2)) {
+                withAnimation(.smooth(duration: 0.22)) {
                     isHovered = hovering
                 }
             }
