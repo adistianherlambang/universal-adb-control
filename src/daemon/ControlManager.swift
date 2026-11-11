@@ -117,21 +117,6 @@ public final class ControlManager {
         }
     }
     
-    private func getDisplayApp() -> NSRunningApplication? {
-        let apps = NSWorkspace.shared.runningApplications
-        for app in apps {
-            let bid = app.bundleIdentifier ?? ""
-            let name = app.localizedName?.lowercased() ?? ""
-            if bid == "com.universal.adb.control.display" ||
-               bid == "org.freedesktop.scrcpy" ||
-               name.contains("universaladbcontroldisplay") ||
-               name.contains("scrcpy") {
-                return app
-            }
-        }
-        return nil
-    }
-    
     public func showNotification(title: String, message: String) {
         let appleScript = "display notification \"\(message)\" with title \"\(title)\""
         executeAppleScript(appleScript)
@@ -263,80 +248,55 @@ public final class ControlManager {
         if isLaunching { return }
         if isGuiRunning {
             toggleEmbedded()
-            return
-        }
-        
-        let displayApp = getDisplayApp()
-        let isRunning = (displayApp != nil && !(displayApp?.isTerminated ?? true))
-        
-        if isControlling && isRunning {
-            // Mode kontrol sedang aktif -> Kembali ke Mac
-            switchToMac()
-        } else if isRunning {
-            // Display sudah ada tapi sedang disembunyikan -> Buka kembali ke Android
-            switchToAndroid()
         } else {
-            // Belum berjalan -> Luncurkan baru
-            launchDisplay()
+            launchGuiAndStart()
         }
     }
-    
-    private func switchToMac() {
-        isControlling = false
-        
-        if let app = getDisplayApp() {
-            app.hide()
-            let script = """
-            tell application "System Events"
-                set visible of (every process whose bundle identifier is "com.universal.adb.control.display" or name contains "UniversalADBControlDisplay" or name contains "scrcpy") to false
-            end tell
-            """
-            executeAppleScript(script)
+
+    private func launchGuiAndStart() {
+        if isLaunching { return }
+        isLaunching = true
+
+        let targetUrl: URL? = {
+            let appUrl = URL(fileURLWithPath: "/Applications/Universal ADB Control.app")
+            if FileManager.default.fileExists(atPath: appUrl.path) { return appUrl }
+            let homeAppUrl = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/code/adb-control/bin/Universal ADB Control.app")
+            if FileManager.default.fileExists(atPath: homeAppUrl.path) { return homeAppUrl }
+            return nil
+        }()
+
+        let launchBlock = { [weak self] in
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self = self else { return }
+                for _ in 0..<40 {
+                    Thread.sleep(forTimeInterval: 0.2)
+                    if self.isGuiRunning {
+                        DispatchQueue.main.async {
+                            self.isLaunching = false
+                            self.toggleEmbedded()
+                        }
+                        return
+                    }
+                }
+                DispatchQueue.main.async {
+                    self.isLaunching = false
+                }
+            }
         }
-        
-        // Kembalikan posisi kursor mouse ke posisi sebelumnya di Mac
-        if let pos = savedMousePos {
-            CGDisplayMoveCursorToPoint(CGMainDisplayID(), pos)
+
+        if let url = targetUrl {
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, err in
+                if err != nil {
+                    _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/open"), arguments: ["-a", "Universal ADB Control"])
+                }
+                launchBlock()
+            }
+        } else {
+            _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/open"), arguments: ["-a", "Universal ADB Control"])
+            launchBlock()
         }
-        
-        // Fokuskan kembali aplikasi Mac yang tadi sedang dibuka
-        if let prev = lastFrontmostApp, !prev.isTerminated {
-            prev.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
-        }
-        
-        showNotification(title: "Universal ADB Control", message: "Kembali ke Mac (Mouse & Keyboard aktif di Mac)")
-        Logger.shared.log("Control switched back to Mac.")
     }
-    
-    private func switchToAndroid() {
-        guard let app = getDisplayApp(), !app.isTerminated else {
-            launchDisplay()
-            return
-        }
-        
-        lastFrontmostApp = NSWorkspace.shared.frontmostApplication
-        savedMousePos = CGEvent(source: nil)?.location
-        
-        // Pastikan keyboard virtual di Android disembunyikan saat hardware keyboard terhubung
-        if let serial = getConnectedAdbDevices().first(where: { $0.state == "device" })?.serial {
-            disableOnScreenKeyboard(serial: serial)
-        }
-        
-        let script = """
-        tell application "System Events"
-            set visible of (every process whose bundle identifier is "com.universal.adb.control.display" or name contains "UniversalADBControlDisplay" or name contains "scrcpy") to true
-            set frontmost of (first process whose bundle identifier is "com.universal.adb.control.display" or name contains "UniversalADBControlDisplay" or name contains "scrcpy") to true
-        end tell
-        """
-        executeAppleScript(script)
-        app.unhide()
-        app.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
-        
-        isControlling = true
-        showNotification(title: "Universal ADB Control", message: "Mengontrol Android (Mode Emulator, ⌘⌥T untuk kembali)")
-        Logger.shared.log("Control switched to Android.")
-    }
-    
+
     private func getConnectedAdbDevices() -> [(serial: String, state: String)] {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: adbBin)
@@ -344,7 +304,7 @@ public final class ControlManager {
         let pipe = Pipe()
         p.standardOutput = pipe
         p.standardError = Pipe()
-        
+
         do {
             try p.run()
             p.waitUntilExit()
@@ -363,125 +323,5 @@ public final class ControlManager {
             Logger.shared.log("Error running adb devices: \(error)")
         }
         return []
-    }
-    
-    private func launchDisplay() {
-        let devs = getConnectedAdbDevices()
-        if devs.isEmpty {
-            showNotification(title: "Universal ADB Control", message: "Tidak ada perangkat Android terhubung!")
-            return
-        }
-        
-        let validDevs = devs.filter { $0.state == "device" }
-        if validDevs.isEmpty {
-            let state = devs.first?.state ?? "unknown"
-            showNotification(title: "Universal ADB Control", message: "Perangkat terdeteksi status: \(state)")
-            return
-        }
-        
-        let config = DaemonConfig.load()
-        var targetSerial: String = validDevs[0].serial
-        if let pref = config.preferredDevice, !pref.isEmpty {
-            if validDevs.contains(where: { $0.serial == pref }) {
-                targetSerial = pref
-            }
-        }
-        
-        isLaunching = true
-        showNotification(title: "Universal ADB Control", message: "Menghubungkan (\(targetSerial))...")
-        
-        // Sembunyikan keyboard virtual (IME) di layar Android agar tidak menutupi tampilan
-        disableOnScreenKeyboard(serial: targetSerial)
-        
-        lastFrontmostApp = NSWorkspace.shared.frontmostApplication
-        savedMousePos = CGEvent(source: nil)?.location
-        
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-            
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: self.displayExecutable)
-            
-            var env = ProcessInfo.processInfo.environment
-            env["SDL_MAC_BACKGROUND_APP"] = "1"
-            let dylibPath = ("~/.universal-adb-control/helpers/libUniversalControlFrame.dylib" as NSString).expandingTildeInPath
-            if FileManager.default.fileExists(atPath: dylibPath) {
-                env["DYLD_INSERT_LIBRARIES"] = dylibPath
-            }
-            p.environment = env
-            
-            // Mode Windowed Emulator Android:
-            // - Bukan fullscreen (layar Mac tetap terlihat)
-            // - Ukuran smartphone proporsional (380x820)
-            // - Resizable window dengan tombol Close, Minimize, Zoom
-            // - Bezel melengkung & punch-hole camera dari overlay dylib
-            // - Always-on-top mengambang di atas desktop Mac
-            p.arguments = [
-                "-s", targetSerial,
-                "--window-width=380",
-                "--window-height=820",
-                "--always-on-top",
-                "--stay-awake",
-                "--shortcut-mod=rctrl",
-                "--no-audio",
-                "--video-codec=\(config.videoCodec)",
-                "--video-bit-rate=\(config.videoBitrate)",
-                "--max-size=\(config.maxSize)",
-                "--max-fps=\(config.maxFps)",
-                "--video-buffer=\(config.videoBufferMs)",
-                "--keyboard=uhid",
-                "--mouse=uhid",
-                "--window-title=Universal ADB Control"
-            ]
-            
-            p.standardOutput = FileHandle.nullDevice
-            p.standardError = FileHandle.nullDevice
-            
-            do {
-                try p.run()
-                Logger.shared.log("Launched Universal ADB Control Display with PID: \(p.processIdentifier)")
-                
-                var attempts = 0
-                while attempts < 30 {
-                    Thread.sleep(forTimeInterval: 0.2)
-                    if let app = self.getDisplayApp() {
-                        DispatchQueue.main.async {
-                            let script = """
-                            tell application "System Events"
-                                set frontmost of (first process whose bundle identifier is "com.universal.adb.control.display" or name contains "UniversalADBControlDisplay" or name contains "scrcpy") to true
-                            end tell
-                            """
-                            self.executeAppleScript(script)
-                            app.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
-                            self.isControlling = true
-                            self.isLaunching = false
-                            self.showNotification(title: "Universal ADB Control", message: "Mengontrol Android (Mode Emulator, ⌘⌥T untuk kembali)")
-                        }
-                        return
-                    }
-                    if !p.isRunning {
-                        break
-                    }
-                    attempts += 1
-                }
-                
-                DispatchQueue.main.async {
-                    self.isLaunching = false
-                    if p.isRunning {
-                        self.isControlling = true
-                        self.showNotification(title: "Universal ADB Control", message: "Layar kontrol aktif (⌘⌥T untuk kembali)")
-                    } else {
-                        self.isControlling = false
-                        self.showNotification(title: "Universal ADB Control", message: "Layar kontrol berhenti tak terduga")
-                    }
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    self.isLaunching = false
-                    self.isControlling = false
-                    self.showNotification(title: "Universal ADB Control", message: "Gagal menjalankan kontrol layar: \(error.localizedDescription)")
-                }
-            }
-        }
     }
 }

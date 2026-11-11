@@ -76,7 +76,6 @@ public final class PasteboardManager {
 
     public func writeText(plain: String, html: String?) {
         pasteboard.clearContents()
-        var objects: [NSPasteboardWriting] = []
         if let h = html, !h.isEmpty {
             let item = NSPasteboardItem()
             item.setString(h, forType: .html)
