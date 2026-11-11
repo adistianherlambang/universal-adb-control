@@ -225,8 +225,8 @@ public final class AppState: ObservableObject {
             "--max-size=\(quality.maxSize)",
             "--max-fps=\(maxFps)",
             "--video-buffer=\(videoBufferMs)",
-            "--keyboard=uhid",
-            "--mouse=uhid",
+            "--keyboard=sdk",
+            "--mouse=sdk",
             "--window-title=Universal ADB Control"
         ]
         let adb = adbPath

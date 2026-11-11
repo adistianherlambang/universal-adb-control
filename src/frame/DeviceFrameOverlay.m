@@ -15,6 +15,35 @@
 
 @end
 
+// MARK: - Swizzle NSWindow to allow borderless window to become Key & Main window
+// Memastikan keyboard dan trackpad/mouse masuk penuh ke layar Android tanpa bocor ke Mac
+@implementation NSWindow (UniversalControlWindowFocus)
+
+- (BOOL)uac_canBecomeKeyWindow {
+    return YES;
+}
+
+- (BOOL)uac_canBecomeMainWindow {
+    return YES;
+}
+
+- (void)uac_sendEvent:(NSEvent *)event {
+    if (event.type == NSEventTypeLeftMouseDown ||
+        event.type == NSEventTypeRightMouseDown ||
+        event.type == NSEventTypeOtherMouseDown ||
+        event.type == NSEventTypeScrollWheel) {
+        if (![NSApp isActive]) {
+            [NSApp activateIgnoringOtherApps:YES];
+        }
+        if (![self isKeyWindow]) {
+            [self makeKeyAndOrderFront:nil];
+        }
+    }
+    [self uac_sendEvent:event];
+}
+
+@end
+
 static void swizzleActivationPolicy(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -22,6 +51,29 @@ static void swizzleActivationPolicy(void) {
         Method swiz = class_getInstanceMethod([NSApplication class], @selector(uac_setActivationPolicy:));
         if (orig && swiz) {
             method_exchangeImplementations(orig, swiz);
+        }
+    });
+}
+
+static void swizzleWindowFocus(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        Method origKey = class_getInstanceMethod([NSWindow class], @selector(canBecomeKeyWindow));
+        Method swizKey = class_getInstanceMethod([NSWindow class], @selector(uac_canBecomeKeyWindow));
+        if (origKey && swizKey) {
+            method_exchangeImplementations(origKey, swizKey);
+        }
+
+        Method origMain = class_getInstanceMethod([NSWindow class], @selector(canBecomeMainWindow));
+        Method swizMain = class_getInstanceMethod([NSWindow class], @selector(uac_canBecomeMainWindow));
+        if (origMain && swizMain) {
+            method_exchangeImplementations(origMain, swizMain);
+        }
+
+        Method origSend = class_getInstanceMethod([NSWindow class], @selector(sendEvent:));
+        Method swizSend = class_getInstanceMethod([NSWindow class], @selector(uac_sendEvent:));
+        if (origSend && swizSend) {
+            method_exchangeImplementations(origSend, swizSend);
         }
     });
 }
@@ -186,6 +238,7 @@ static void applyEmbeddedMode(NSWindow *window) {
     window.backgroundColor = [NSColor clearColor];
     window.hasShadow = NO;
     window.level = NSFloatingWindowLevel;
+    window.acceptsMouseMovedEvents = YES;
     window.collectionBehavior |= NSWindowCollectionBehaviorTransient | NSWindowCollectionBehaviorIgnoresCycle;
 
     NSView *content = window.contentView;
@@ -246,6 +299,7 @@ static void scheduleWindowCheck(int attemptsLeft) {
 __attribute__((constructor))
 static void initUniversalControlFrame(void) {
     swizzleActivationPolicy();
+    swizzleWindowFocus();
     
     // Selalu set process name ke "Universal ADB Control"
     [[NSProcessInfo processInfo] setValue:@"Universal ADB Control" forKey:@"processName"];
@@ -256,6 +310,22 @@ static void initUniversalControlFrame(void) {
         gParentPid = (pid_t)atoi(parentPidStr);
         gIsEmbedded = gParentPid > 0;
     }
+
+    // Tangkap mouse down & scroll wheel agar fokus keyboard & trackpad 100% masuk ke scrcpy tanpa bocor ke Mac
+    [NSEvent addLocalMonitorForEventsMatchingMask:(NSEventMaskLeftMouseDown |
+                                                   NSEventMaskRightMouseDown |
+                                                   NSEventMaskOtherMouseDown |
+                                                   NSEventMaskScrollWheel)
+                                          handler:^NSEvent * _Nullable(NSEvent * _Nonnull event) {
+        if (![NSApp isActive]) {
+            [NSApp activateIgnoringOtherApps:YES];
+        }
+        NSWindow *w = event.window;
+        if (w && ![w isKeyWindow]) {
+            [w makeKeyAndOrderFront:nil];
+        }
+        return event;
+    }];
 
     // Intersepsi Cmd+Q dan Cmd+W saat fokus berada di dalam layar scrcpy
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent * _Nullable(NSEvent * _Nonnull event) {
