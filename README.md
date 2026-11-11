@@ -89,7 +89,8 @@ universal-adb-control/
   - Menghitung koordinat piksel area layar ponsel dan menyimpannya ke `~/.universal-adb-control/host_rect.json`.
   - Meluncurkan helper display scrcpy dengan parameter koordinat mutlak (`--keyboard=sdk --mouse=sdk`) untuk sinkronisasi kursor 1:1 dan gestur trackpad mulus.
   - Mengirim tombol fisik Android (Volume Up/Down, Power, Back, Home, Recents) via ADB keyevent.
-- **`src/gui/MainView.swift`**: Desain antarmuka modern Liquid Glass SwiftUI:
+- **`src/gui/MainView.swift`**: Desain antarmuka modern Liquid Glass SwiftUI berbasis spesifikasi Figma Glass Effect (Refraction 100, Depth 100, Frost 5, Dispersion 100, Splay 100):
+  - Sistem styling kaca kustom (`LiquidGlass`) dengan dispersi prisma kromatik, pembiasan ganda Fresnel, bayangan kedalaman 3D bertingkat, dan transparansi kristal jernih.
   - Mockup bodi smartphone proporsional dengan sudut melengkung halus dan tombol fisik samping interaktif.
   - Dock navigasi bawah bergaya kapsul kaca melayang (Kembali, Beranda, Recents, Mulai/Berhenti).
   - Komponen penanda geometri (`ScreenAnchor` / `AnchorView`) untuk sinkronisasi posisi layar overlay.
