@@ -143,7 +143,18 @@ public final class ControlManager {
     private static let guiBundleId = "com.universal.adb.control.gui"
 
     private var isGuiRunning: Bool {
-        !NSRunningApplication.runningApplications(withBundleIdentifier: ControlManager.guiBundleId).isEmpty
+        if !NSRunningApplication.runningApplications(withBundleIdentifier: ControlManager.guiBundleId).isEmpty {
+            return true
+        }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        p.arguments = ["-x", "UniversalADBControlGUI"]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return false }
+        p.waitUntilExit()
+        return p.terminationStatus == 0
     }
 
     private func embeddedHelperPid() -> pid_t? {
@@ -247,10 +258,22 @@ public final class ControlManager {
     public func toggleControl() {
         if isLaunching { return }
         if isGuiRunning {
-            toggleEmbedded()
+            closeGui()
         } else {
             launchGuiAndStart()
         }
+    }
+
+    private func closeGui() {
+        isLaunching = false
+        returnToMac()
+        let apps = NSRunningApplication.runningApplications(withBundleIdentifier: ControlManager.guiBundleId)
+        for app in apps {
+            app.terminate()
+        }
+        _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/pkill"), arguments: ["-f", "UniversalADBControlDisplay"])
+        _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/pkill"), arguments: ["-f", "UniversalADBControlGUI"])
+        Logger.shared.log("GUI closed completely from daemon trigger.")
     }
 
     private func launchGuiAndStart() {
@@ -258,9 +281,9 @@ public final class ControlManager {
         isLaunching = true
 
         let candidatePaths = [
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/code/adb-control/bin/Universal ADB Control.app").path,
             "/Applications/Universal ADB Control.app",
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/Universal ADB Control.app").path,
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/code/adb-control/bin/Universal ADB Control.app").path
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/Universal ADB Control.app").path
         ]
 
         var targetPath: String?
@@ -282,18 +305,23 @@ public final class ControlManager {
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
-            for _ in 0..<40 {
-                Thread.sleep(forTimeInterval: 0.2)
-                if self.isGuiRunning {
-                    DispatchQueue.main.async {
-                        self.isLaunching = false
-                        self.toggleEmbedded()
-                    }
-                    return
-                }
+            // Tunggu sebentar sampai proses GUI aktif
+            for _ in 0..<15 {
+                Thread.sleep(forTimeInterval: 0.1)
+                if self.isGuiRunning { break }
             }
             DispatchQueue.main.async {
                 self.isLaunching = false
+            }
+            // Auto-focus layar jika helper streaming muncul
+            for _ in 0..<20 {
+                Thread.sleep(forTimeInterval: 0.15)
+                if let pid = self.embeddedHelperPid(), self.helperWindowCenter(pid: pid) != nil {
+                    DispatchQueue.main.async {
+                        self.focusEmbedded(pid: pid)
+                    }
+                    break
+                }
             }
         }
     }

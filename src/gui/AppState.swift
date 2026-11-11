@@ -198,9 +198,19 @@ public final class AppState: ObservableObject {
     }
 
     public func startDisplay() {
+        startDisplay(retryCount: 3)
+    }
+
+    public func startDisplay(retryCount: Int) {
         guard !isStreaming else { return }
         guard let device = activeDevice else {
-            showToast("Belum ada perangkat")
+            if retryCount > 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                    self?.startDisplay(retryCount: retryCount - 1)
+                }
+            } else {
+                showToast("Belum ada perangkat")
+            }
             return
         }
         guard FileManager.default.isExecutableFile(atPath: helperBin) else {

@@ -87,5 +87,9 @@ cp bin/libUniversalControlFrame.dylib "${USER_HELPERS}/libUniversalControlFrame.
 mkdir -p "${CONTENTS_DIR}/Frameworks"
 cp bin/libUniversalControlFrame.dylib "${CONTENTS_DIR}/Frameworks/libUniversalControlFrame.dylib"
 
+# Perbarui salinan di /Applications agar macOS menemukan versi terbaru
+rm -rf "/Applications/${APP_NAME}.app"
+cp -R "${BUNDLE_DIR}" "/Applications/${APP_NAME}.app" 2>/dev/null || true
+
 echo "==> Sukses! Aplikasi macOS bundle siap di ${BUNDLE_DIR}"
 echo "    Bisa dibuka dengan: open \"${BUNDLE_DIR}\""
