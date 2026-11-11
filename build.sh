@@ -24,6 +24,7 @@ swiftc -O \
 
 echo "==> Mengompilasi Universal ADB Control GUI..."
 swiftc -O -parse-as-library -target arm64-apple-macos26.0 \
+    src/gui/LiquidGlass.swift \
     src/gui/AppState.swift \
     src/gui/MainView.swift \
     src/gui/main.swift \
