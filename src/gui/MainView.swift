@@ -78,25 +78,27 @@ struct MainView: View {
     // MARK: Dock bawah — navigasi Android + mulai/berhenti
 
     private var dock: some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 4) {
-                dockButton("chevron.backward", help: "Kembali", action: state.sendBack)
-                dockButton("circle", help: "Beranda", action: state.sendHome)
-                dockButton("square", help: "Aplikasi terkini", action: state.sendRecents)
-            }
-            .padding(4)
-            .liquidGlass(in: Capsule())
+        GlassEffectContainer(spacing: 12) {
+            HStack(spacing: 12) {
+                HStack(spacing: 4) {
+                    dockButton("chevron.backward", help: "Kembali", action: state.sendBack)
+                    dockButton("circle", help: "Beranda", action: state.sendHome)
+                    dockButton("square", help: "Aplikasi terkini", action: state.sendRecents)
+                }
+                .padding(4)
+                .liquidGlass(in: Capsule())
 
-            Button(action: state.toggleDisplay) {
-                Image(systemName: state.isStreaming ? "stop.fill" : "play.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 48, height: 48)
+                Button(action: state.toggleDisplay) {
+                    Image(systemName: state.isStreaming ? "stop.fill" : "play.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 48, height: 48)
+                }
+                .buttonStyle(.plain)
+                .liquidGlass(in: Circle(), interactive: true, tint: state.isStreaming ? nil : .accentColor)
+                .disabled(state.activeDevice == nil)
+                .help(state.isStreaming ? "Berhenti" : "Mulai  ⌘⌥T")
             }
-            .buttonStyle(.plain)
-            .liquidGlass(in: Circle(), interactive: true, tint: state.isStreaming ? nil : .accentColor)
-            .disabled(state.activeDevice == nil)
-            .help(state.isStreaming ? "Berhenti" : "Mulai  ⌘⌥T")
         }
         .disabled(state.activeDevice == nil)
         .opacity(state.activeDevice == nil ? 0.5 : 1)
