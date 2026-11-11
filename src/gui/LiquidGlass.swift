@@ -44,80 +44,88 @@ public struct LiquidGlassModifier<S: InsettableShape>: ViewModifier {
     }
 
     public func body(content: Content) -> some View {
-        content
+        let base = content
             // 1. HARDWARE-ACCELERATED NATIVE macOS 27 LIQUID GLASS
             .glassEffect(nativeGlass, in: shape)
-            // 2. REFRACTION & DISPERSION: Bevel Rim (Halus saat diam, ditebalkan saat hover)
+            // 2. REFRACTION & DISPERSION: Bevel Rim
             .overlay {
-                if refFactor > 0 {
-                    let rimAlpha = isHovered ? (0.55 * refFactor) : (0.07 * refFactor)
-                    let strokeWidth: CGFloat = isHovered ? 1.2 : 0.5
+                Group {
+                    if refFactor > 0 {
+                        let rimAlpha = isHovered ? (0.55 * refFactor) : (0.07 * refFactor)
+                        let strokeWidth: CGFloat = isHovered ? 1.2 : 0.5
 
-                    if isHovered && dispFactor > 0.05 {
-                        // Dispersi prisma kromatik hanya menebal & memancar saat kursor hover
-                        shape.strokeBorder(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: Color.white.opacity(rimAlpha * 1.4), location: 0.0),
-                                    .init(color: Color(red: 0.55, green: 0.85, blue: 1.0).opacity(rimAlpha * 0.90 * dispFactor), location: 0.25),
-                                    .init(color: Color(red: 0.80, green: 0.65, blue: 1.0).opacity(rimAlpha * 0.80 * dispFactor), location: 0.50),
-                                    .init(color: Color(red: 1.0, green: 0.75, blue: 0.50).opacity(rimAlpha * 0.70 * dispFactor), location: 0.75),
-                                    .init(color: Color.white.opacity(rimAlpha * 0.35), location: 1.0)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: strokeWidth
-                        )
-                    } else {
-                        // Saat diam: garis tepi monokrom sangat halus, tipis dan tidak mengganggu mata
-                        shape.strokeBorder(
-                            LinearGradient(
+                        if isHovered && dispFactor > 0.05 {
+                            shape.strokeBorder(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: Color.white.opacity(rimAlpha * 1.4), location: 0.0),
+                                        .init(color: Color(red: 0.55, green: 0.85, blue: 1.0).opacity(rimAlpha * 0.90 * dispFactor), location: 0.25),
+                                        .init(color: Color(red: 0.80, green: 0.65, blue: 1.0).opacity(rimAlpha * 0.80 * dispFactor), location: 0.50),
+                                        .init(color: Color(red: 1.0, green: 0.75, blue: 0.50).opacity(rimAlpha * 0.70 * dispFactor), location: 0.75),
+                                        .init(color: Color.white.opacity(rimAlpha * 0.35), location: 1.0)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: strokeWidth
+                            )
+                        } else {
+                            shape.strokeBorder(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(rimAlpha * 1.2),
+                                        Color.white.opacity(rimAlpha * 0.15)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: strokeWidth
+                            )
+                        }
+                    }
+                }
+                .allowsHitTesting(false) // Mematikan hit-testing HANYA pada overlay rim
+            }
+            // 3. SPLAY: Specular Flare Sheen
+            .overlay {
+                Group {
+                    if splayFactor > 0 && isHovered {
+                        let flareRadius = CGFloat(20.0 + 45.0 * splayFactor)
+                        shape.fill(
+                            RadialGradient(
                                 colors: [
-                                    Color.white.opacity(rimAlpha * 1.2),
-                                    Color.white.opacity(rimAlpha * 0.15)
+                                    Color.white.opacity(0.20 * splayFactor),
+                                    Color.white.opacity(0.02 * splayFactor),
+                                    Color.clear
                                 ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: strokeWidth
+                                center: .top,
+                                startRadius: 0,
+                                endRadius: flareRadius
+                            )
                         )
                     }
                 }
+                .allowsHitTesting(false) // Mematikan hit-testing HANYA pada pendaran
             }
-            .allowsHitTesting(false) // Bebaskan hit-testing: overlay grafis tidak boleh menyerap klik!
-            // 3. SPLAY: Specular Flare Sheen (Hanya menyala saat hover)
-            .overlay {
-                if splayFactor > 0 && isHovered {
-                    let flareRadius = CGFloat(20.0 + 45.0 * splayFactor)
-                    shape.fill(
-                        RadialGradient(
-                            colors: [
-                                Color.white.opacity(0.20 * splayFactor),
-                                Color.white.opacity(0.02 * splayFactor),
-                                Color.clear
-                            ],
-                            center: .top,
-                            startRadius: 0,
-                            endRadius: flareRadius
-                        )
-                    )
-                }
-            }
-            .allowsHitTesting(false) // Bebaskan hit-testing: pendaran cahaya tidak boleh menyerap klik!
-            // 4. DEPTH: Ambient Elevation Shadow (Tenang saat diam, terangkat halus saat hover)
+            // 4. DEPTH: Ambient Elevation Shadow
             .shadow(
                 color: Color.black.opacity((isHovered ? 0.30 : 0.06) * depthFactor),
                 radius: (isHovered ? 14 : 3) * depthFactor,
                 x: 0,
                 y: (isHovered ? 7 : 1.5) * depthFactor
             )
-            .onHover { hovering in
-                guard isInteractive else { return }
-                withAnimation(.smooth(duration: 0.18)) {
-                    isHovered = hovering
+
+        if isInteractive {
+            base
+                .contentShape(shape)
+                .onHover { hovering in
+                    withAnimation(.smooth(duration: 0.18)) {
+                        isHovered = hovering
+                    }
                 }
-            }
+        } else {
+            base
+        }
     }
 }
 
@@ -126,8 +134,8 @@ public struct InteractiveButtonStyle: ButtonStyle {
     public init() {}
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
-            .opacity(configuration.isPressed ? 0.80 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .opacity(configuration.isPressed ? 0.82 : 1.0)
             .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
     }
 }
