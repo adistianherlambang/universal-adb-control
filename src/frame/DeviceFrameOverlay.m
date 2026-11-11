@@ -366,6 +366,31 @@ static void initUniversalControlFrame(void) {
         gParentPid = (pid_t)atoi(parentPidStr);
         gIsEmbedded = gParentPid > 0;
     }
+
+    // Intersepsi Cmd+Q dan Cmd+W saat fokus berada di dalam layar scrcpy
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent * _Nullable(NSEvent * _Nonnull event) {
+        NSEventModifierFlags flags = (event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask);
+        if ((flags & NSEventModifierFlagCommand) != 0) {
+            NSString *chars = [event charactersIgnoringModifiers].lowercaseString;
+            if ([chars isEqualToString:@"q"]) {
+                if (gParentPid > 0) {
+                    kill(gParentPid, SIGTERM);
+                }
+                [NSApp terminate:nil];
+                exit(0);
+                return nil;
+            }
+            if ([chars isEqualToString:@"w"]) {
+                if (gParentPid > 0) {
+                    kill(gParentPid, SIGTERM);
+                }
+                [NSApp terminate:nil];
+                exit(0);
+                return nil;
+            }
+        }
+        return event;
+    }];
     
     [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidBecomeKeyNotification
                                                       object:nil

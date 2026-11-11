@@ -7,7 +7,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        setupMainMenu()
         setupMenuBar()
+        setupEventMonitors()
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 440, height: 820),
@@ -57,6 +59,73 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    private func setupMainMenu() {
+        let mainMenu = NSMenu()
+
+        // 1. Menu Aplikasi
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(NSMenuItem(title: "Tentang Universal ADB Control", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: ""))
+        appMenu.addItem(.separator())
+        let hideItem = NSMenuItem(title: "Sembunyikan Universal ADB Control", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        let hideOthersItem = NSMenuItem(title: "Sembunyikan Lainnya", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        hideOthersItem.keyEquivalentModifierMask = [.command, .option]
+        let showAllItem = NSMenuItem(title: "Tampilkan Semua", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        appMenu.addItem(hideItem)
+        appMenu.addItem(hideOthersItem)
+        appMenu.addItem(showAllItem)
+        appMenu.addItem(.separator())
+        let quitItem = NSMenuItem(title: "Keluar Universal ADB Control", action: #selector(quitApp), keyEquivalent: "q")
+        appMenu.addItem(quitItem)
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        // 2. Menu Edit (Aksi teks & clipboard standar)
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(NSMenuItem(title: "Urungkan", action: Selector(("undo:")), keyEquivalent: "z"))
+        let redoItem = NSMenuItem(title: "Ulangi", action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(redoItem)
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: "Potong", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Salin", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Tempel", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Pilih Semua", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+
+        // 3. Menu Jendela
+        let windowMenuItem = NSMenuItem()
+        let windowMenu = NSMenu(title: "Jendela")
+        let closeItem = NSMenuItem(title: "Tutup Jendela", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        let miniItem = NSMenuItem(title: "Kecilkan", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(closeItem)
+        windowMenu.addItem(miniItem)
+        windowMenuItem.submenu = windowMenu
+        mainMenu.addItem(windowMenuItem)
+
+        NSApp.mainMenu = mainMenu
+    }
+
+    private func setupEventMonitors() {
+        // Intersepsi lokal memastikan ⌘Q dan ⌘W selalu aktif di seluruh komponen UI
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if flags.contains(.command) {
+                let key = event.charactersIgnoringModifiers?.lowercased()
+                if key == "q" {
+                    self?.quitApp()
+                    return nil
+                }
+                if key == "w" {
+                    self?.window?.performClose(nil)
+                    return nil
+                }
+            }
+            return event
+        }
+    }
+
     private func setupMenuBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem?.button?.image = NSImage(systemSymbolName: "iphone", accessibilityDescription: "Universal ADB Control")
@@ -82,11 +151,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc func quitApp() {
         appState.stopDisplay()
+        _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/pkill"), arguments: ["-f", "UniversalADBControlDisplay"])
         NSApplication.shared.terminate(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            exit(0)
+        }
     }
 
     func windowWillClose(_ notification: Notification) {
         appState.stopDisplay()
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return true
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -102,6 +179,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 @main
 struct UniversalControlApp {
     static func main() {
+        signal(SIGTERM) { _ in exit(0) }
+        signal(SIGINT) { _ in exit(0) }
+
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
