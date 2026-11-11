@@ -1,6 +1,154 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Figma-Spec Liquid Glass Shader / Styling
+// Parameter Figma Effect:
+// 1. Refraction: 100 -> Pembiasan sudut tajam, highlight caustics ganda (Fresnel rim + bevel specular)
+// 2. Depth: 100      -> Ketebalan 3D fisik nyata, bayangan bertingkat (contact + deep ambient drop shadow)
+// 3. Frost: 5        -> Blur sangat rendah, kristal bening (ultra-clear glossy liquid, tidak keruh)
+// 4. Dispersion: 100 -> Pembiasan spektrum prisma kromatik (gradasi warna iridesens pelangi pada tepi bevel)
+// 5. Splay: 100      -> Sebaran pendaran cahaya luas (wide specular flared sheen menutupi permukaan)
+
+public struct LiquidGlassBackground<S: InsettableShape>: View {
+    let shape: S
+    var isHovered: Bool = false
+    var tintColor: Color? = nil
+
+    public var body: some View {
+        ZStack {
+            // 2. DEPTH 100: Contact shadow (bayangan kontak objek fisik tebal)
+            shape
+                .fill(Color.black.opacity(0.35))
+                .shadow(color: Color.black.opacity(0.40), radius: 3, x: 0, y: 2)
+
+            // 2. DEPTH 100: Deep projection ambient shadow (bayangan jatuh dalam)
+            shape
+                .fill(Color.clear)
+                .shadow(color: Color.black.opacity(isHovered ? 0.45 : 0.30),
+                        radius: isHovered ? 24 : 16,
+                        x: 0,
+                        y: isHovered ? 12 : 8)
+
+            // 3. FROST 5: Ultra-clear crystal liquid base (jernih & tidak keruh)
+            if let tint = tintColor {
+                shape.fill(
+                    LinearGradient(
+                        colors: [
+                            tint.opacity(isHovered ? 0.70 : 0.55),
+                            tint.opacity(isHovered ? 0.45 : 0.35)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            } else {
+                shape.fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(isHovered ? 0.16 : 0.10),
+                            Color.white.opacity(isHovered ? 0.05 : 0.02)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            }
+
+            // 2. DEPTH 100: Internal 3D volume gradient (ketebalan lempengan kaca)
+            shape.fill(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.18),
+                        Color.clear,
+                        Color.black.opacity(0.25)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+
+            // 5. SPLAY 100: Wide flared specular sheen (pendaran kilau menyebar 100%)
+            shape.fill(
+                RadialGradient(
+                    colors: [
+                        Color.white.opacity(isHovered ? 0.42 : 0.28),
+                        Color.white.opacity(0.08),
+                        Color.clear
+                    ],
+                    center: .top,
+                    startRadius: 0,
+                    endRadius: 75
+                )
+            )
+
+            // 4. DISPERSION 100: Chromatic prism rim (penguraian prisma warna pelangi pada bevel)
+            shape.strokeBorder(
+                LinearGradient(
+                    stops: [
+                        .init(color: Color(red: 0.90, green: 0.96, blue: 1.0, opacity: 0.95), location: 0.0), // Specular entri
+                        .init(color: Color(red: 0.45, green: 0.85, blue: 1.0, opacity: 0.80), location: 0.20), // Sian
+                        .init(color: Color(red: 0.80, green: 0.60, blue: 1.0, opacity: 0.75), location: 0.45), // Violet
+                        .init(color: Color(red: 1.0, green: 0.55, blue: 0.75, opacity: 0.60), location: 0.65), // Magenta
+                        .init(color: Color(red: 1.0, green: 0.80, blue: 0.45, opacity: 0.50), location: 0.85), // Amber
+                        .init(color: Color.white.opacity(0.15), location: 1.0)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 1.2
+            )
+
+            // 1. REFRACTION 100: Sharp inner caustics Fresnel rim (pembiasan ganda di tepi dalam)
+            shape
+                .inset(by: 1.2)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(isHovered ? 0.75 : 0.50),
+                            Color.white.opacity(0.10),
+                            Color.clear,
+                            Color.white.opacity(0.20)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 0.8
+                )
+        }
+    }
+}
+
+public struct LiquidGlassModifier<S: InsettableShape>: ViewModifier {
+    let shape: S
+    var isInteractive: Bool = false
+    var tintColor: Color? = nil
+    @State private var isHovered = false
+
+    public func body(content: Content) -> some View {
+        content
+            .background(
+                LiquidGlassBackground(shape: shape, isHovered: isHovered, tintColor: tintColor)
+            )
+            .contentShape(shape)
+            .onHover { hovering in
+                guard isInteractive else { return }
+                withAnimation(.smooth(duration: 0.2)) {
+                    isHovered = hovering
+                }
+            }
+    }
+}
+
+public extension View {
+    func liquidGlass<S: InsettableShape>(
+        in shape: S,
+        interactive: Bool = false,
+        tint: Color? = nil
+    ) -> some View {
+        self.modifier(LiquidGlassModifier(shape: shape, isInteractive: interactive, tintColor: tint))
+    }
+}
+
 // Ukuran dasar ponsel (skala 1.0). Rasio layar 9:20 mengikuti HP modern.
 private enum Phone {
     static let screen = CGSize(width: 288, height: 640)
@@ -49,10 +197,10 @@ struct MainView: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 14)
-                .frame(height: 30)
+                .frame(height: 32)
             }
             .buttonStyle(.plain)
-            .glassEffect(.regular.interactive(), in: .capsule)
+            .liquidGlass(in: Capsule(), interactive: true)
             .popover(isPresented: $showDevices, arrowEdge: .bottom) {
                 DevicePopover(state: state, isPresented: $showDevices)
             }
@@ -62,43 +210,41 @@ struct MainView: View {
             Button { showSettings.toggle() } label: {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 13, weight: .medium))
-                    .frame(width: 30, height: 30)
+                    .frame(width: 32, height: 32)
             }
             .buttonStyle(.plain)
-            .glassEffect(.regular.interactive(), in: .circle)
+            .liquidGlass(in: Circle(), interactive: true)
             .help("Pengaturan")
             .popover(isPresented: $showSettings, arrowEdge: .bottom) {
                 SettingsPopover(state: state)
             }
             .padding(.trailing, 16)
         }
-        .frame(height: 30)
+        .frame(height: 32)
     }
 
     // MARK: Dock bawah — navigasi Android + mulai/berhenti
 
     private var dock: some View {
-        GlassEffectContainer(spacing: 12) {
-            HStack(spacing: 12) {
-                HStack(spacing: 4) {
-                    dockButton("chevron.backward", help: "Kembali", action: state.sendBack)
-                    dockButton("circle", help: "Beranda", action: state.sendHome)
-                    dockButton("square", help: "Aplikasi terkini", action: state.sendRecents)
-                }
-                .padding(4)
-                .glassEffect(.regular, in: .capsule)
-
-                Button(action: state.toggleDisplay) {
-                    Image(systemName: state.isStreaming ? "stop.fill" : "play.fill")
-                        .font(.system(size: 15, weight: .semibold))
-                        .contentTransition(.symbolEffect(.replace))
-                        .frame(width: 48, height: 48)
-                }
-                .buttonStyle(.plain)
-                .glassEffect(state.isStreaming ? .regular.interactive() : .regular.tint(.accentColor).interactive(), in: .circle)
-                .disabled(state.activeDevice == nil)
-                .help(state.isStreaming ? "Berhenti" : "Mulai  ⌘⌥T")
+        HStack(spacing: 12) {
+            HStack(spacing: 4) {
+                dockButton("chevron.backward", help: "Kembali", action: state.sendBack)
+                dockButton("circle", help: "Beranda", action: state.sendHome)
+                dockButton("square", help: "Aplikasi terkini", action: state.sendRecents)
             }
+            .padding(4)
+            .liquidGlass(in: Capsule())
+
+            Button(action: state.toggleDisplay) {
+                Image(systemName: state.isStreaming ? "stop.fill" : "play.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 48, height: 48)
+            }
+            .buttonStyle(.plain)
+            .liquidGlass(in: Circle(), interactive: true, tint: state.isStreaming ? nil : .accentColor)
+            .disabled(state.activeDevice == nil)
+            .help(state.isStreaming ? "Berhenti" : "Mulai  ⌘⌥T")
         }
         .disabled(state.activeDevice == nil)
         .opacity(state.activeDevice == nil ? 0.5 : 1)
@@ -121,7 +267,7 @@ struct MainView: View {
                 .font(.system(size: 12, weight: .medium))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 9)
-                .glassEffect(.regular, in: .capsule)
+                .liquidGlass(in: Capsule())
                 .padding(.bottom, 84)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
         }
@@ -201,7 +347,7 @@ private struct PhoneView: View {
                         .frame(width: 72, height: 72)
                 }
                 .buttonStyle(.plain)
-                .glassEffect(.regular.interactive(), in: .circle)
+                .liquidGlass(in: Circle(), interactive: true)
                 Text("⌘⌥T")
                     .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.35))
@@ -214,7 +360,7 @@ private struct PhoneView: View {
                     .frame(width: 64, height: 64)
             }
             .buttonStyle(.plain)
-            .glassEffect(.regular.interactive(), in: .circle)
+            .liquidGlass(in: Circle(), interactive: true)
             .help("Hubungkan perangkat")
         }
     }
@@ -282,7 +428,7 @@ private struct DevicePopover: View {
                     .textFieldStyle(.plain)
                     .padding(.horizontal, 12)
                     .frame(height: 32)
-                    .glassEffect(.regular, in: .capsule)
+                    .liquidGlass(in: Capsule())
                     .onSubmit(connect)
                 Button(action: connect) {
                     Image(systemName: "arrow.right")
@@ -290,7 +436,7 @@ private struct DevicePopover: View {
                         .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.plain)
-                .glassEffect(.regular.tint(.accentColor).interactive(), in: .circle)
+                .liquidGlass(in: Circle(), interactive: true, tint: .accentColor)
                 .disabled(address.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             .padding(.top, state.devices.isEmpty ? 0 : 6)
