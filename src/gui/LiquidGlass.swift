@@ -186,3 +186,4 @@ public extension View {
         self.modifier(LiquidGlassModifier(shape: shape, isInteractive: interactive, tintColor: tint))
     }
 }
+
