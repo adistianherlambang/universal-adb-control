@@ -39,6 +39,7 @@ struct MainView: View {
                     }
                     Text(state.activeDevice?.displayName ?? "Tidak ada perangkat")
                         .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.secondary)
@@ -53,6 +54,13 @@ struct MainView: View {
                 DevicePopover(state: state, isPresented: $showDevices)
             }
             Spacer()
+        }
+        .overlay(alignment: .leading) {
+            if state.isStreaming {
+                metricsBadge
+                    .padding(.leading, 16)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            }
         }
         .overlay(alignment: .trailing) {
             Button { showSettings.toggle() } label: {
@@ -70,6 +78,30 @@ struct MainView: View {
             .padding(.trailing, 16)
         }
         .frame(height: 32)
+    }
+
+    private var metricsBadge: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(state.currentFps >= 50 ? Color.green : (state.currentFps >= 30 ? Color.yellow : Color.red))
+                .frame(width: 6, height: 6)
+
+            Text("\(state.currentFps) FPS")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
+
+            Text("•")
+                .font(.system(size: 7, weight: .bold))
+                .foregroundStyle(.tertiary)
+
+            Text("\(state.currentLatencyMs) ms")
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(state.currentLatencyMs < 45 ? .secondary : (state.currentLatencyMs < 90 ? Color.orange : Color.red))
+        }
+        .padding(.horizontal, 9)
+        .frame(height: 28)
+        .liquidGlass(in: Capsule())
+        .help("Kecepatan streaming: \(state.currentFps) FPS • Latensi: \(state.currentLatencyMs) ms")
     }
 
     // MARK: Dock bawah — navigasi Android + mulai/berhenti
@@ -554,6 +586,19 @@ private struct SettingsPopover: View {
             Toggle("Sinkron clipboard", isOn: Binding(get: { state.isSyncOn }, set: { state.setSync($0) }))
                 .toggleStyle(.switch)
                 .font(.system(size: 13))
+
+            if state.isStreaming {
+                Divider()
+                HStack {
+                    Text("Performa")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(state.currentFps) FPS • \(state.currentLatencyMs) ms")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+                }
+            }
         }
         .padding(16)
         .frame(width: 260)

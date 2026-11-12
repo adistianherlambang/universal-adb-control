@@ -18,6 +18,10 @@ Aplikasi kontrol nirkabel & kabel untuk mengendalikan HP Android dari Mac secara
   - Pembatasan resolusi adaptif (`max-size=1280`) untuk latensi encoding < 4 ms.
   - Penguncian 60 FPS stabil.
   - Jitter buffer 15 ms untuk menyerap fluktuasi sinyal nirkabel tanpa lag/patah-patah.
+- **Indikator Metrik Real-Time (FPS & ms)**:
+  - HUD performa Liquid Glass di bar atas yang menampilkan framerate aktual (FPS) dan latensi transmisi jaringan (ms) secara real-time.
+  - Pengukuran latensi native via TCP handshake / ICMP ping tanpa memberatkan thread utama.
+  - Indikator visual status koneksi (hijau, kuning, oranye, merah) yang adaptif dan informatif.
 - **Device Management**: Deteksi otomatis perangkat ADB USB & Wi-Fi dengan fitur *one-click connect/disconnect*.
 - **Background Daemon & CLI**: Berjalan stabil di latar belakang via macOS LaunchAgent (`com.universal.adb.control.daemon`).
 

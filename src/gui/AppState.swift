@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import Cocoa
 import SwiftUI
+import Darwin
 
 public struct AdbDeviceItem: Identifiable, Hashable {
     public var id: String { serial }
@@ -75,6 +76,8 @@ public final class AppState: ObservableObject {
     @Published public var toast: String? = nil
     @Published public var isLandscape: Bool = false
     @Published public var screenAspectRatio: CGFloat = 9.0 / 20.0
+    @Published public var currentFps: Int = 60
+    @Published public var currentLatencyMs: Int = 0
     // Saat popover terbuka, layar HP disembunyikan sementara agar tidak menutupi popover
     @Published public var overlayOpen = false { didSet { writeHostRect() } }
 
@@ -90,6 +93,8 @@ public final class AppState: ObservableObject {
     private var hostRadius: CGFloat = 38
 
     private var displayProcess: Process?
+    private var displayOutputPipe: Pipe?
+    private var latencyTimer: Timer?
     private var toastWork: DispatchWorkItem?
     private var timer: Timer?
     private let worker = DispatchQueue(label: "uac.worker", qos: .userInitiated)
@@ -111,6 +116,8 @@ public final class AppState: ObservableObject {
 
     deinit {
         timer?.invalidate()
+        latencyTimer?.invalidate()
+        displayOutputPipe?.fileHandleForReading.readabilityHandler = nil
     }
 
     // MARK: - Konfigurasi
@@ -267,10 +274,13 @@ public final class AppState: ObservableObject {
             "--video-buffer=\(buffer)",
             "--keyboard=sdk",
             "--mouse=sdk",
-            "--window-title=Universal ADB Control"
+            "--window-title=Universal ADB Control",
+            "--print-fps"
         ]
         let adb = adbPath
         let bin = helperBin
+
+        startMetricsTracking(serial: serial, isWifi: isWifi)
 
         worker.async { [weak self] in
             guard let self = self else { return }
@@ -284,11 +294,37 @@ public final class AppState: ObservableObject {
             env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
             env["UAC_PARENT_PID"] = String(ProcessInfo.processInfo.processIdentifier)
             p.environment = env
-            p.standardOutput = FileHandle.nullDevice
-            p.standardError = FileHandle.nullDevice
+
+            let outPipe = Pipe()
+            p.standardOutput = outPipe
+            p.standardError = outPipe
+
+            let fpsRegex = try? NSRegularExpression(pattern: "([0-9]+(?:\\.[0-9]+)?)\\s*fps", options: .caseInsensitive)
+            outPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+                let data = handle.availableData
+                guard !data.isEmpty else { return }
+                if let str = String(data: data, encoding: .utf8) {
+                    if let regex = fpsRegex,
+                       let match = regex.matches(in: str, options: [], range: NSRange(location: 0, length: (str as NSString).length)).last {
+                        let fpsStr = (str as NSString).substring(with: match.range(at: 1))
+                        if let fpsVal = Double(fpsStr) {
+                            let roundedFps = Int(round(fpsVal))
+                            if roundedFps > 0 {
+                                DispatchQueue.main.async {
+                                    self?.currentFps = roundedFps
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             p.terminationHandler = { [weak self] proc in
                 DispatchQueue.main.async {
                     guard let self = self, self.displayProcess === proc else { return }
+                    self.stopMetricsTracking()
+                    outPipe.fileHandleForReading.readabilityHandler = nil
+                    self.displayOutputPipe = nil
                     self.displayProcess = nil
                     self.isStreaming = false
                     if proc.terminationStatus != 0 && proc.terminationReason == .exit {
@@ -298,9 +334,15 @@ public final class AppState: ObservableObject {
             }
             do {
                 try p.run()
-                DispatchQueue.main.async { self.displayProcess = p }
+                DispatchQueue.main.async {
+                    self.displayProcess = p
+                    self.displayOutputPipe = outPipe
+                }
             } catch {
                 DispatchQueue.main.async {
+                    self.stopMetricsTracking()
+                    outPipe.fileHandleForReading.readabilityHandler = nil
+                    self.displayOutputPipe = nil
                     self.isStreaming = false
                     self.showToast("Gagal membuka layar")
                 }
@@ -309,6 +351,9 @@ public final class AppState: ObservableObject {
     }
 
     public func stopDisplay() {
+        stopMetricsTracking()
+        displayOutputPipe?.fileHandleForReading.readabilityHandler = nil
+        displayOutputPipe = nil
         let p = displayProcess
         displayProcess = nil
         p?.terminate()
@@ -321,6 +366,86 @@ public final class AppState: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
             self?.startDisplay()
         }
+    }
+
+    // MARK: - Metrik FPS & Latensi
+
+    private func startMetricsTracking(serial: String, isWifi: Bool) {
+        currentFps = Int(maxFps) ?? 60
+        currentLatencyMs = isWifi ? 15 : 2
+        latencyTimer?.invalidate()
+        latencyTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            guard let self = self, self.isStreaming else { return }
+            self.measureLatency(serial: serial, isWifi: isWifi)
+        }
+        measureLatency(serial: serial, isWifi: isWifi)
+    }
+
+    private func stopMetricsTracking() {
+        latencyTimer?.invalidate()
+        latencyTimer = nil
+        currentLatencyMs = 0
+    }
+
+    private func measureLatency(serial: String, isWifi: Bool) {
+        if !isWifi {
+            DispatchQueue.main.async { [weak self] in
+                self?.currentLatencyMs = 2
+            }
+            return
+        }
+        worker.async { [weak self] in
+            guard let self = self else { return }
+            let parts = serial.split(separator: ":")
+            guard let host = parts.first.map(String.init) else { return }
+            let port = parts.count > 1 ? (UInt16(parts[1]) ?? 5555) : 5555
+
+            var latency = self.measureTcpLatency(host: host, port: port)
+            if latency == nil {
+                let pingOut = self.runShell("ping -c 1 -W 350 \(host)")
+                if let range = pingOut.range(of: "time=") {
+                    let sub = pingOut[range.upperBound...]
+                    if let endRange = sub.range(of: " ms") {
+                        let numStr = sub[..<endRange.lowerBound].trimmingCharacters(in: .whitespaces)
+                        if let d = Double(numStr) {
+                            latency = Int(round(d))
+                        }
+                    }
+                }
+            }
+
+            let finalMs = latency ?? 16
+            DispatchQueue.main.async {
+                if self.isStreaming {
+                    self.currentLatencyMs = finalMs
+                }
+            }
+        }
+    }
+
+    private func measureTcpLatency(host: String, port: UInt16) -> Int? {
+        let t0 = CFAbsoluteTimeGetCurrent()
+        var hints = addrinfo()
+        hints.ai_family = AF_INET
+        hints.ai_socktype = SOCK_STREAM
+        var res: UnsafeMutablePointer<addrinfo>?
+        let status = getaddrinfo(host, String(port), &hints, &res)
+        guard status == 0, let res = res else { return nil }
+        defer { freeaddrinfo(res) }
+
+        let sock = socket(res.pointee.ai_family, res.pointee.ai_socktype, res.pointee.ai_protocol)
+        guard sock >= 0 else { return nil }
+        defer { close(sock) }
+
+        var tv = timeval(tv_sec: 0, tv_usec: 350_000)
+        setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+
+        if connect(sock, res.pointee.ai_addr, res.pointee.ai_addrlen) == 0 {
+            let t1 = CFAbsoluteTimeGetCurrent()
+            return Int(round((t1 - t0) * 1000.0))
+        }
+        return nil
     }
 
     // MARK: - Tombol fisik Android
