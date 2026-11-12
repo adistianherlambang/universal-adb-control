@@ -193,15 +193,26 @@ public final class AppState: ObservableObject {
 
     private func parseDevices(_ output: String) -> [AdbDeviceItem] {
         var items: [AdbDeviceItem] = []
+        let lineRegex = try? NSRegularExpression(pattern: "^(.+?)\\s+(device|offline|unauthorized|authorizing)\\b(?:\\s+(.*))?$", options: [])
+        let modelRegex = try? NSRegularExpression(pattern: "model:(\\S+)", options: [])
+
         for line in output.components(separatedBy: .newlines) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty || trimmed.hasPrefix("List of devices") || trimmed.hasPrefix("*") { continue }
-            let parts = trimmed.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
-            guard parts.count >= 2 else { continue }
-            let model = parts.first { $0.hasPrefix("model:") }?.replacingOccurrences(of: "model:", with: "") ?? "Android"
-            let serial = parts[0]
-            items.append(AdbDeviceItem(serial: serial, state: parts[1], model: model,
-                                       isWifi: serial.contains(":") || serial.contains("._tcp")))
+            let ns = trimmed as NSString
+            guard let match = lineRegex?.firstMatch(in: trimmed, options: [], range: NSRange(location: 0, length: ns.length)) else { continue }
+            let serial = ns.substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespaces)
+            let state = ns.substring(with: match.range(at: 2))
+            var model = "Android"
+            if match.range(at: 3).location != NSNotFound {
+                let rest = ns.substring(with: match.range(at: 3))
+                let restNs = rest as NSString
+                if let modelMatch = modelRegex?.firstMatch(in: rest, options: [], range: NSRange(location: 0, length: restNs.length)) {
+                    model = restNs.substring(with: modelMatch.range(at: 1))
+                }
+            }
+            let isWifi = serial.contains(":") || serial.contains("._tcp") || serial.hasPrefix("adb-")
+            items.append(AdbDeviceItem(serial: serial, state: state, model: model, isWifi: isWifi))
         }
         return items
     }
@@ -648,28 +659,36 @@ public final class AppState: ObservableObject {
     }
 
     public func disconnect(_ serial: String) {
+        let isWifi = devices.first(where: { $0.serial == serial })?.isWifi ?? (serial.contains(":") || serial.contains("._tcp") || serial.hasPrefix("adb-"))
+
         if serial == activeDevice?.serial && isStreaming {
             stopDisplay()
         }
-        withAnimation(.smooth(duration: 0.25)) {
-            devices.removeAll { $0.serial == serial }
-            if selectedSerial == serial {
-                selectedSerial = devices.first?.serial ?? ""
-                saveConfig()
-            }
-        }
-        showToast("Perangkat diputuskan")
 
-        let adb = adbPath
-        worker.async { [weak self] in
-            guard let self = self else { return }
-            _ = self.runShell("\(adb) disconnect \(serial)")
-            if let host = serial.split(separator: ":").first {
-                _ = self.runShell("\(adb) disconnect \(host)")
+        if isWifi {
+            withAnimation(.smooth(duration: 0.25)) {
+                devices.removeAll { $0.serial == serial }
+                if selectedSerial == serial {
+                    selectedSerial = devices.first?.serial ?? ""
+                    saveConfig()
+                }
             }
-            DispatchQueue.main.async {
-                self.refresh()
+            showToast("Perangkat diputuskan")
+
+            let adb = adbPath
+            worker.async { [weak self] in
+                guard let self = self else { return }
+                _ = self.runShell("\(adb) disconnect \"\(serial)\"")
+                if let host = serial.split(separator: ":").first, !host.isEmpty, !host.contains(" ") {
+                    _ = self.runShell("\(adb) disconnect \(host)")
+                }
+                DispatchQueue.main.async {
+                    self.refresh()
+                }
             }
+        } else {
+            // Perangkat USB terhubung kabel fisik
+            showToast("Cabut kabel USB untuk melepas fisik")
         }
     }
 

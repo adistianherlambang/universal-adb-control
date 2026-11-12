@@ -518,10 +518,8 @@ private struct DevicePopover: View {
                 }
             }
 
-            if dev.isWifi {
-                DeviceDisconnectButton {
-                    state.disconnect(dev.serial)
-                }
+            DeviceDisconnectButton {
+                state.disconnect(dev.serial)
             }
         }
         .padding(.horizontal, 8)
