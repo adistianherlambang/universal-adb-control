@@ -266,6 +266,8 @@ static void scheduleWindowCheck(int attemptsLeft) {
 
 __attribute__((constructor))
 static void initUniversalControlFrame(void) {
+    setlinebuf(stdout);
+    setlinebuf(stderr);
     swizzleActivationPolicy();
     swizzleWindowFocus();
     

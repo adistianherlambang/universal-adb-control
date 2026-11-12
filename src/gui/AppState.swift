@@ -302,17 +302,18 @@ public final class AppState: ObservableObject {
             let fpsRegex = try? NSRegularExpression(pattern: "([0-9]+(?:\\.[0-9]+)?)\\s*fps", options: .caseInsensitive)
             outPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
                 let data = handle.availableData
-                guard !data.isEmpty else { return }
+                if data.isEmpty {
+                    handle.readabilityHandler = nil
+                    return
+                }
                 if let str = String(data: data, encoding: .utf8) {
                     if let regex = fpsRegex,
                        let match = regex.matches(in: str, options: [], range: NSRange(location: 0, length: (str as NSString).length)).last {
                         let fpsStr = (str as NSString).substring(with: match.range(at: 1))
                         if let fpsVal = Double(fpsStr) {
                             let roundedFps = Int(round(fpsVal))
-                            if roundedFps > 0 {
-                                DispatchQueue.main.async {
-                                    self?.currentFps = roundedFps
-                                }
+                            DispatchQueue.main.async {
+                                self?.currentFps = roundedFps
                             }
                         }
                     }

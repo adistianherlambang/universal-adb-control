@@ -83,12 +83,12 @@ struct MainView: View {
     private var metricsBadge: some View {
         HStack(spacing: 5) {
             Circle()
-                .fill(state.currentFps >= 50 ? Color.green : (state.currentFps >= 30 ? Color.yellow : Color.red))
+                .fill(state.currentFps >= 50 ? Color.green : (state.currentFps > 0 ? Color.yellow : Color.secondary.opacity(0.5)))
                 .frame(width: 6, height: 6)
 
             Text("\(state.currentFps) FPS")
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(.primary)
+                .foregroundStyle(state.currentFps > 0 ? .primary : .secondary)
 
             Text("•")
                 .font(.system(size: 7, weight: .bold))
@@ -101,7 +101,7 @@ struct MainView: View {
         .padding(.horizontal, 9)
         .frame(height: 28)
         .liquidGlass(in: Capsule())
-        .help("Kecepatan streaming: \(state.currentFps) FPS • Latensi: \(state.currentLatencyMs) ms")
+        .help("FPS render: \(state.currentFps) (0 saat layar diam)\nLatensi jaringan RTT: \(state.currentLatencyMs) ms")
     }
 
     // MARK: Dock bawah — navigasi Android + mulai/berhenti
