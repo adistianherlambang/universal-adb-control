@@ -344,53 +344,42 @@ public final class AppState: ObservableObject {
         guard !addr.isEmpty else { return }
         let target = addr.contains(":") ? addr : "\(addr):5555"
         let adb = adbPath
-        showToast("Menghubungkan ke \(target)...")
         worker.async { [weak self] in
             guard let self = self else { return }
             let res = self.runShell("\(adb) connect \(target)").lowercased()
             DispatchQueue.main.async {
                 if res.contains("connected to") && !res.contains("cannot") {
                     self.selectDevice(target)
-                    self.showToast("Terhubung ke \(target)")
                 } else {
-                    self.showToast("Gagal terhubung ke \(target)")
+                    self.showToast("Gagal terhubung")
                 }
                 self.refresh()
             }
         }
     }
 
-    public func pairAndConnect(pairingAddress: String, code: String, connectPort: String = "") {
+    public func pairAndConnect(pairingAddress: String, code: String) {
         let pairAddr = pairingAddress.trimmingCharacters(in: .whitespaces)
         let pin = code.trimmingCharacters(in: .whitespaces)
-        let connPort = connectPort.trimmingCharacters(in: .whitespaces)
-        guard !pairAddr.isEmpty, !pin.isEmpty else {
-            showToast("Masukkan alamat dan kode pairing")
-            return
-        }
+        guard !pairAddr.isEmpty, !pin.isEmpty else { return }
         let adb = adbPath
-        showToast("Memasangkan perangkat...")
         worker.async { [weak self] in
             guard let self = self else { return }
             let pairOutput = self.runShell("\(adb) pair \(pairAddr) \(pin)")
             if pairOutput.contains("Successfully paired to") {
-                let host = pairAddr.components(separatedBy: ":").first ?? pairAddr
-                let target = connPort.isEmpty ? pairAddr : "\(host):\(connPort)"
                 Thread.sleep(forTimeInterval: 0.5)
-                let connOutput = self.runShell("\(adb) connect \(target)").lowercased()
+                let connOutput = self.runShell("\(adb) connect \(pairAddr)").lowercased()
                 DispatchQueue.main.async {
                     if connOutput.contains("connected to") && !connOutput.contains("cannot") {
-                        self.selectDevice(target)
-                        self.showToast("Berhasil dipasangkan & terhubung")
+                        self.selectDevice(pairAddr)
                     } else {
-                        self.showToast("Berhasil dipasangkan!")
+                        self.showToast("Berhasil dipasangkan")
                     }
                     self.refresh()
                 }
             } else {
-                let msg = pairOutput.trimmingCharacters(in: .whitespacesAndNewlines)
                 DispatchQueue.main.async {
-                    self.showToast(msg.isEmpty ? "Gagal memasangkan perangkat" : msg)
+                    self.showToast("Gagal memasangkan")
                     self.refresh()
                 }
             }

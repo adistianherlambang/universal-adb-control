@@ -41,11 +41,11 @@ struct MainView: View {
         HStack {
             Spacer()
             Button { showDevices.toggle() } label: {
-                HStack(spacing: 7) {
+                HStack(spacing: 6) {
                     if let dev = state.activeDevice {
-                        Image(systemName: dev.connectionIcon)
+                        Image(systemName: dev.isWifi ? "wifi" : "cable.connector")
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(dev.isWifi ? Color.blue.opacity(0.9) : Color.green.opacity(0.9))
+                            .foregroundStyle(.secondary)
                     }
                     Text(state.activeDevice?.displayName ?? "Tidak ada perangkat")
                         .font(.system(size: 13, weight: .semibold))
@@ -276,8 +276,8 @@ private struct SideKey: View {
 // MARK: - Popover perangkat
 
 private enum ConnectionMode: String, CaseIterable, Identifiable {
-    case pair = "Kode Pairing"
-    case direct = "Sambung IP"
+    case direct = "IP"
+    case pair = "Kode"
 
     var id: String { rawValue }
 }
@@ -286,258 +286,130 @@ private struct DevicePopover: View {
     @ObservedObject var state: AppState
     @Binding var isPresented: Bool
 
-    @State private var mode: ConnectionMode = .pair
+    @State private var mode: ConnectionMode = .direct
     @State private var directAddress = ""
     @State private var pairAddress = ""
     @State private var pairCode = ""
-    @State private var connectPort = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header
-            HStack {
-                Text("Daftar Perangkat")
-                    .font(.system(size: 12, weight: .bold))
-                Spacer()
-                Text("\(state.devices.count) terdeteksi")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-
-            // List Perangkat
+        VStack(alignment: .leading, spacing: 8) {
             if state.devices.isEmpty {
-                VStack(spacing: 8) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "cable.connector.horizontal")
-                            .font(.system(size: 15))
-                            .foregroundStyle(.green.opacity(0.85))
-                        Image(systemName: "wifi")
-                            .font(.system(size: 15))
-                            .foregroundStyle(.blue.opacity(0.85))
-                    }
-                    Text("Belum ada perangkat terdeteksi")
-                        .font(.system(size: 11, weight: .medium))
-                    Text("Colok kabel USB (aktifkan USB Debugging) atau gunakan menu Wi-Fi di bawah.")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .padding(.horizontal, 10)
-                .background(Color.white.opacity(0.04))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                Text("Tidak ada perangkat")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 4)
             } else {
-                ScrollView {
-                    VStack(spacing: 4) {
-                        ForEach(state.devices) { dev in
-                            deviceRow(dev)
-                        }
-                    }
+                ForEach(state.devices) { dev in
+                    deviceRow(dev)
                 }
-                .frame(maxHeight: state.devices.count > 3 ? 160 : nil)
             }
 
             Divider().opacity(0.3)
 
-            // Form Tambah Koneksi Wi-Fi / Pairing
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Koneksi Nirkabel (Wi-Fi)")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.secondary)
-                    Spacer()
+            Picker("", selection: $mode) {
+                ForEach(ConnectionMode.allCases) { m in
+                    Text(m.rawValue).tag(m)
                 }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
 
-                Picker("", selection: $mode) {
-                    ForEach(ConnectionMode.allCases) { m in
-                        Text(m.rawValue).tag(m)
+            if mode == .direct {
+                HStack(spacing: 8) {
+                    TextField("Alamat IP", text: $directAddress)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                        .padding(.horizontal, 12)
+                        .frame(height: 30)
+                        .liquidGlass(in: Capsule())
+                        .onSubmit(submitDirect)
+
+                    Button(action: submitDirect) {
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 11, weight: .bold))
+                            .frame(width: 30, height: 30)
+                            .contentShape(Circle())
                     }
+                    .buttonStyle(.interactiveGlass)
+                    .liquidGlass(in: Circle(), interactive: true, tint: .accentColor)
+                    .disabled(directAddress.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+            } else {
+                HStack(spacing: 6) {
+                    TextField("IP:Port", text: $pairAddress)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                        .padding(.horizontal, 10)
+                        .frame(height: 30)
+                        .liquidGlass(in: Capsule())
 
-                if mode == .pair {
-                    // Wireless debugging with pairing code (Android 11+)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Opsi Pengembang > Debug Nirkabel > Sambungkan dengan kode")
-                            .font(.system(size: 9.5))
-                            .foregroundStyle(.secondary)
+                    TextField("Kode", text: $pairCode)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                        .frame(width: 64)
+                        .padding(.horizontal, 8)
+                        .frame(height: 30)
+                        .liquidGlass(in: Capsule())
+                        .onSubmit(submitPair)
 
-                        HStack(spacing: 6) {
-                            TextField("IP:Port pairing (192.168.1.5:37281)", text: $pairAddress)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 11))
-                                .padding(.horizontal, 8)
-                                .frame(height: 28)
-                                .background(Color.white.opacity(0.06))
-                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-
-                            TextField("Kode (6 digit)", text: $pairCode)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 11))
-                                .frame(width: 86)
-                                .padding(.horizontal, 8)
-                                .frame(height: 28)
-                                .background(Color.white.opacity(0.06))
-                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        }
-
-                        HStack(spacing: 6) {
-                            TextField("Port koneksi (opsional, jika beda)", text: $connectPort)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 10.5))
-                                .padding(.horizontal, 8)
-                                .frame(height: 28)
-                                .background(Color.white.opacity(0.06))
-                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-
-                            Button(action: submitPair) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "link.badge.plus")
-                                    Text("Pasang")
-                                }
-                                .font(.system(size: 11, weight: .semibold))
-                                .frame(height: 28)
-                                .padding(.horizontal, 10)
-                                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                            }
-                            .buttonStyle(.interactiveGlass)
-                            .liquidGlass(in: RoundedRectangle(cornerRadius: 6, style: .continuous), interactive: true, tint: .accentColor)
-                            .disabled(pairAddress.trimmingCharacters(in: .whitespaces).isEmpty || pairCode.trimmingCharacters(in: .whitespaces).isEmpty)
-                        }
+                    Button(action: submitPair) {
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 11, weight: .bold))
+                            .frame(width: 30, height: 30)
+                            .contentShape(Circle())
                     }
-                } else {
-                    // Direct connect
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Untuk perangkat yang sudah dipasangkan atau mode port 5555")
-                            .font(.system(size: 9.5))
-                            .foregroundStyle(.secondary)
-
-                        HStack(spacing: 6) {
-                            TextField("Alamat IP[:Port] (misal 192.168.1.5:5555)", text: $directAddress)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 11))
-                                .padding(.horizontal, 8)
-                                .frame(height: 28)
-                                .background(Color.white.opacity(0.06))
-                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                .onSubmit(submitDirect)
-
-                            Button(action: submitDirect) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "arrow.right")
-                                    Text("Sambung")
-                                }
-                                .font(.system(size: 11, weight: .semibold))
-                                .frame(height: 28)
-                                .padding(.horizontal, 10)
-                                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                            }
-                            .buttonStyle(.interactiveGlass)
-                            .liquidGlass(in: RoundedRectangle(cornerRadius: 6, style: .continuous), interactive: true, tint: .accentColor)
-                            .disabled(directAddress.trimmingCharacters(in: .whitespaces).isEmpty)
-                        }
-                    }
+                    .buttonStyle(.interactiveGlass)
+                    .liquidGlass(in: Circle(), interactive: true, tint: .accentColor)
+                    .disabled(pairAddress.trimmingCharacters(in: .whitespaces).isEmpty || pairCode.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }
-        .padding(14)
-        .frame(width: 330)
+        .padding(12)
+        .frame(width: 250)
     }
 
     private func deviceRow(_ dev: AdbDeviceItem) -> some View {
-        let isSelected = dev.serial == state.activeDevice?.serial
-        return HStack(spacing: 9) {
-            // Icon penanda USB / Wi-Fi
-            ZStack {
-                Circle()
-                    .fill((dev.isWifi ? Color.blue : Color.green).opacity(0.18))
-                    .frame(width: 26, height: 26)
-                Image(systemName: dev.connectionIcon)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(dev.isWifi ? Color.blue : Color.green)
-            }
-
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 5) {
-                    Text(dev.displayName)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(dev.isReady ? .primary : .secondary)
-
-                    // Badge teks USB atau Wi-Fi
-                    Text(dev.connectionType)
-                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                        .foregroundStyle(dev.isWifi ? Color.blue : Color.green)
-                        .padding(.horizontal, 4.5)
-                        .padding(.vertical, 1)
-                        .background((dev.isWifi ? Color.blue : Color.green).opacity(0.15))
-                        .clipShape(Capsule())
-                }
-
-                HStack(spacing: 4) {
-                    Text(dev.serial)
-                        .font(.system(size: 9.5, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                    if dev.isUnauthorized {
-                        Text("• Butuh izin di HP")
-                            .font(.system(size: 9.5, weight: .medium))
-                            .foregroundStyle(.orange)
-                    } else if dev.isOffline {
-                        Text("• Offline")
-                            .font(.system(size: 9.5, weight: .medium))
-                            .foregroundStyle(.red)
-                    }
-                }
-            }
-
+        HStack(spacing: 8) {
+            Image(systemName: dev.isWifi ? "wifi" : "cable.connector")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+            Text(dev.displayName)
+                .font(.system(size: 12))
+                .foregroundStyle(dev.isReady ? .primary : .secondary)
             Spacer(minLength: 8)
-
-            if isSelected {
+            if dev.serial == state.activeDevice?.serial {
                 Image(systemName: "checkmark")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.primary)
             }
-
             if dev.isWifi {
                 Button {
                     state.disconnect(dev.serial)
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 22, height: 22)
+                        .frame(width: 18, height: 18)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .help("Putuskan koneksi Wi-Fi")
-            } else {
-                Button {
-                    state.enableTcpip(serial: dev.serial)
-                } label: {
-                    Image(systemName: "wifi.badge.plus")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 22, height: 22)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .help("Aktifkan mode Wi-Fi (Port 5555)")
+                .foregroundStyle(.secondary)
+                .help("Putuskan")
             }
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(isSelected ? Color.white.opacity(0.08) : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .frame(height: 30)
         .contentShape(Rectangle())
         .onTapGesture {
             guard dev.isReady else { return }
             state.selectDevice(dev.serial)
+            isPresented = false
         }
     }
 
     private func submitPair() {
-        state.pairAndConnect(pairingAddress: pairAddress, code: pairCode, connectPort: connectPort)
+        state.pairAndConnect(pairingAddress: pairAddress, code: pairCode)
         pairCode = ""
     }
 
