@@ -648,11 +648,28 @@ public final class AppState: ObservableObject {
     }
 
     public func disconnect(_ serial: String) {
-        if serial == activeDevice?.serial && isStreaming { stopDisplay() }
+        if serial == activeDevice?.serial && isStreaming {
+            stopDisplay()
+        }
+        withAnimation(.smooth(duration: 0.25)) {
+            devices.removeAll { $0.serial == serial }
+            if selectedSerial == serial {
+                selectedSerial = devices.first?.serial ?? ""
+                saveConfig()
+            }
+        }
+        showToast("Perangkat diputuskan")
+
         let adb = adbPath
         worker.async { [weak self] in
-            _ = self?.runShell("\(adb) disconnect \(serial)")
-            DispatchQueue.main.async { self?.refresh() }
+            guard let self = self else { return }
+            _ = self.runShell("\(adb) disconnect \(serial)")
+            if let host = serial.split(separator: ":").first {
+                _ = self.runShell("\(adb) disconnect \(host)")
+            }
+            DispatchQueue.main.async {
+                self.refresh()
+            }
         }
     }
 

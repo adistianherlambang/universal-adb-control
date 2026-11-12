@@ -479,20 +479,32 @@ private struct DevicePopover: View {
     private func deviceRow(_ dev: AdbDeviceItem) -> some View {
         let isSelected = dev.serial == state.activeDevice?.serial
         return HStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .fill((dev.isWifi ? Color.blue : Color.green).opacity(0.14))
-                    .frame(width: 24, height: 24)
-                Image(systemName: dev.isWifi ? "wifi" : "cable.connector")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(dev.isWifi ? Color.blue : Color.green)
+            Button {
+                guard dev.isReady else { return }
+                state.selectDevice(dev.serial)
+                isPresented = false
+            } label: {
+                HStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill((dev.isWifi ? Color.blue : Color.green).opacity(0.14))
+                            .frame(width: 24, height: 24)
+                        Image(systemName: dev.isWifi ? "wifi" : "cable.connector")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(dev.isWifi ? Color.blue : Color.green)
+                    }
+
+                    Text(dev.displayName)
+                        .font(.system(size: 12.5, weight: isSelected ? .semibold : .regular))
+                        .foregroundStyle(dev.isReady ? .primary : .secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    Spacer(minLength: 4)
+                }
+                .contentShape(Rectangle())
             }
-
-            Text(dev.displayName)
-                .font(.system(size: 12.5, weight: isSelected ? .semibold : .regular))
-                .foregroundStyle(dev.isReady ? .primary : .secondary)
-
-            Spacer(minLength: 8)
+            .buttonStyle(.plain)
 
             if isSelected {
                 ZStack {
@@ -524,12 +536,6 @@ private struct DevicePopover: View {
                     )
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            guard dev.isReady else { return }
-            state.selectDevice(dev.serial)
-            isPresented = false
-        }
     }
 
     private func submitPair() {
@@ -553,14 +559,15 @@ private struct DeviceDisconnectButton: View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(hover ? Color.red.opacity(0.22) : Color.white.opacity(0.06))
-                    .overlay(Circle().stroke(hover ? Color.red.opacity(0.40) : Color.white.opacity(0.14), lineWidth: 0.8))
+                    .fill(hover ? Color.red.opacity(0.25) : Color.white.opacity(0.06))
+                    .overlay(Circle().stroke(hover ? Color.red.opacity(0.50) : Color.white.opacity(0.14), lineWidth: 0.8))
                     .frame(width: 20, height: 20)
                 Image(systemName: "xmark")
                     .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(hover ? Color.red : Color.secondary)
             }
-            .contentShape(Circle())
+            .frame(width: 24, height: 24)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { h in withAnimation(.smooth(duration: 0.15)) { hover = h } }
