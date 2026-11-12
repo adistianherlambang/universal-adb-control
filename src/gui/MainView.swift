@@ -1,37 +1,27 @@
 import SwiftUI
 import AppKit
 
-// Ukuran dasar ponsel (skala 1.0). Rasio layar 9:20 mengikuti HP modern.
-private enum Phone {
-    static let screen = CGSize(width: 288, height: 640)
-    static let bezel: CGFloat = 9
-    static let body = CGSize(width: screen.width + bezel * 2, height: screen.height + bezel * 2)
-    static let bodyRadius: CGFloat = 46
-    static let screenRadius: CGFloat = 38
-}
-
 struct MainView: View {
     @ObservedObject var state: AppState
     @State private var showDevices = false
     @State private var showSettings = false
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             topBar
             GeometryReader { geo in
-                let scale = min((geo.size.height) / Phone.body.height,
-                                (geo.size.width - 48) / Phone.body.width, 1.6)
-                PhoneView(state: state, scale: max(scale, 0.5), onConnect: { showDevices = true })
+                PhoneView(state: state, availableSize: geo.size, onConnect: { showDevices = true })
                     .frame(width: geo.size.width, height: geo.size.height)
             }
             dock
         }
         .padding(.top, 8)
-        .padding(.bottom, 22)
-        .frame(minWidth: 380, minHeight: 700)
+        .padding(.bottom, 16)
+        .frame(minWidth: 320, minHeight: 380)
         .overlay(alignment: .bottom) { toast }
         .animation(.smooth(duration: 0.25), value: state.toast)
         .animation(.smooth(duration: 0.25), value: state.isStreaming)
+        .animation(.smooth(duration: 0.35), value: state.isLandscape)
         .onChange(of: showDevices || showSettings) { _, open in state.overlayOpen = open }
     }
 
@@ -91,6 +81,7 @@ struct MainView: View {
                     dockButton("chevron.backward", help: "Kembali", action: state.sendBack)
                     dockButton("circle", help: "Beranda", action: state.sendHome)
                     dockButton("square", help: "Aplikasi terkini", action: state.sendRecents)
+                    dockButton("rotate.right", help: state.isLandscape ? "Rotasi ke Portret" : "Rotasi ke Lanskap", action: state.toggleRotation)
                 }
                 .padding(4)
                 .liquidGlass(in: Capsule())
@@ -165,73 +156,108 @@ private struct DockIconButton: View {
 
 private struct PhoneView: View {
     @ObservedObject var state: AppState
-    let scale: CGFloat
+    let availableSize: CGSize
     let onConnect: () -> Void
 
     var body: some View {
-        let screen = CGSize(width: Phone.screen.width * scale, height: Phone.screen.height * scale)
-        let radius = Phone.screenRadius * scale
+        let isLandscape = state.isLandscape
+        let ratio = state.screenAspectRatio > 0.1 ? state.screenAspectRatio : (isLandscape ? (20.0 / 9.0) : (9.0 / 20.0))
+        let screen = computeScreenSize(availableSize: availableSize, ratio: ratio)
+        let bezel: CGFloat = 8
+        let bodyW = screen.width + bezel * 2
+        let bodyH = screen.height + bezel * 2
+        let minDim = min(bodyW, bodyH)
+        let bodyRadius: CGFloat = max(minDim * 0.12, 16)
+        let screenRadius: CGFloat = max(bodyRadius - bezel, 10)
 
         ZStack {
-            RoundedRectangle(cornerRadius: Phone.bodyRadius * scale, style: .continuous)
+            RoundedRectangle(cornerRadius: bodyRadius, style: .continuous)
                 .fill(Color(white: 0.05))
                 .overlay(
-                    RoundedRectangle(cornerRadius: Phone.bodyRadius * scale, style: .continuous)
+                    RoundedRectangle(cornerRadius: bodyRadius, style: .continuous)
                         .strokeBorder(LinearGradient(colors: [Color(white: 0.42), Color(white: 0.14), Color(white: 0.30)],
                                                      startPoint: .topLeading, endPoint: .bottomTrailing),
                                       lineWidth: 1.5)
                 )
-                .shadow(color: .black.opacity(0.35), radius: 24 * scale, y: 12 * scale)
+                .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
 
             ZStack {
                 Color.black
                 if state.isStreaming {
                     ProgressView().controlSize(.small).tint(.white)
                 } else {
-                    idleScreen
-                }
-                // Lubang kamera (saat streaming, kamera digambar ulang di atas layar oleh helper)
-                VStack {
-                    Circle().fill(Color(white: 0.02))
-                        .overlay(Circle().stroke(Color(white: 0.18), lineWidth: 1))
-                        .frame(width: 10 * scale, height: 10 * scale)
-                        .padding(.top, 12 * scale)
-                    Spacer()
+                    idleScreen(screenSize: screen)
                 }
             }
             .frame(width: screen.width, height: screen.height)
-            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-            .background(ScreenAnchor(radius: radius) { rect, r in state.updateHostGeometry(rect: rect, radius: r) })
+            .clipShape(RoundedRectangle(cornerRadius: screenRadius, style: .continuous))
+            .background(ScreenAnchor(radius: screenRadius) { rect, r in
+                state.updateHostGeometry(rect: rect, radius: r)
+            })
         }
-        .frame(width: Phone.body.width * scale, height: Phone.body.height * scale)
-        .overlay(alignment: .topTrailing) { sideButtons }
-    }
-
-    // Tombol samping fisik: volume naik, volume turun, power
-    private var sideButtons: some View {
-        VStack(spacing: 10 * scale) {
-            sideKey(height: 44, help: "Volume naik", action: state.sendVolumeUp)
-            sideKey(height: 44, help: "Volume turun", action: state.sendVolumeDown)
-            sideKey(height: 62, help: "Power", action: state.sendPower)
-                .padding(.top, 18 * scale)
+        .frame(width: bodyW, height: bodyH)
+        .overlay(alignment: .topTrailing) {
+            sideButtons(isLandscape: isLandscape, bodyDim: isLandscape ? bodyW : bodyH)
         }
-        .padding(.top, 120 * scale)
-        .offset(x: 6)
     }
 
-    private func sideKey(height: CGFloat, help: String, action: @escaping () -> Void) -> some View {
-        SideKey(height: height * scale, action: action).help(help)
+    private func computeScreenSize(availableSize: CGSize, ratio: CGFloat) -> CGSize {
+        let bezel: CGFloat = 8
+        let horizontalPadding: CGFloat = 20
+        let verticalPadding: CGFloat = 10
+
+        let maxW = max(availableSize.width - horizontalPadding * 2 - bezel * 2, 80)
+        let maxH = max(availableSize.height - verticalPadding * 2 - bezel * 2, 80)
+
+        var screenW = maxW
+        var screenH = screenW / ratio
+
+        if screenH > maxH {
+            screenH = maxH
+            screenW = screenH * ratio
+        }
+        return CGSize(width: screenW, height: screenH)
     }
 
-    @ViewBuilder private var idleScreen: some View {
+    @ViewBuilder
+    private func sideButtons(isLandscape: Bool, bodyDim: CGFloat) -> some View {
+        let scale = max(bodyDim / 600.0, 0.6)
+        if !isLandscape {
+            VStack(spacing: 8 * scale) {
+                sideKey(width: 4, height: 38 * scale, help: "Volume naik", action: state.sendVolumeUp)
+                sideKey(width: 4, height: 38 * scale, help: "Volume turun", action: state.sendVolumeDown)
+                sideKey(width: 4, height: 52 * scale, help: "Power", action: state.sendPower)
+                    .padding(.top, 14 * scale)
+            }
+            .padding(.top, 90 * scale)
+            .offset(x: 6)
+        } else {
+            HStack(spacing: 8 * scale) {
+                sideKey(width: 38 * scale, height: 4, help: "Volume naik", action: state.sendVolumeUp)
+                sideKey(width: 38 * scale, height: 4, help: "Volume turun", action: state.sendVolumeDown)
+                sideKey(width: 52 * scale, height: 4, help: "Power", action: state.sendPower)
+                    .padding(.leading, 14 * scale)
+            }
+            .padding(.trailing, 90 * scale)
+            .offset(y: -6)
+        }
+    }
+
+    private func sideKey(width: CGFloat, height: CGFloat, help: String, action: @escaping () -> Void) -> some View {
+        SideKey(width: width, height: height, action: action).help(help)
+    }
+
+    @ViewBuilder private func idleScreen(screenSize: CGSize) -> some View {
         LinearGradient(colors: [Color(white: 0.10), Color(white: 0.02)], startPoint: .top, endPoint: .bottom)
         if state.activeDevice != nil {
-            VStack(spacing: 14) {
+            let btnDim = min(screenSize.width, screenSize.height) * 0.22
+            let iconSize = min(screenSize.width, screenSize.height) * 0.08
+            VStack(spacing: 12) {
                 Button(action: state.startDisplay) {
                     Image(systemName: "play.fill")
-                        .font(.system(size: 24, weight: .semibold))
+                        .font(.system(size: max(iconSize, 18), weight: .semibold))
                         .foregroundStyle(.white)
-                        .frame(width: 72, height: 72)
+                        .frame(width: max(btnDim, 48), height: max(btnDim, 48))
                         .contentShape(Circle())
                 }
                 .buttonStyle(.interactiveGlass)
@@ -245,7 +271,7 @@ private struct PhoneView: View {
                 Image(systemName: "plus")
                     .font(.system(size: 22, weight: .medium))
                     .foregroundStyle(.white)
-                    .frame(width: 64, height: 64)
+                    .frame(width: 56, height: 56)
                     .contentShape(Circle())
             }
             .buttonStyle(.interactiveGlass)
@@ -256,6 +282,7 @@ private struct PhoneView: View {
 }
 
 private struct SideKey: View {
+    let width: CGFloat
     let height: CGFloat
     let action: () -> Void
     @State private var hover = false
@@ -264,8 +291,8 @@ private struct SideKey: View {
         Button(action: action) {
             Capsule()
                 .fill(Color(white: hover ? 0.42 : 0.24))
-                .frame(width: 4, height: height)
-                .frame(width: 14, height: height)
+                .frame(width: width, height: height)
+                .frame(width: max(width, 14), height: max(height, 14))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

@@ -78,24 +78,6 @@ static void swizzleWindowFocus(void) {
     });
 }
 
-// MARK: - Lubang kamera di atas layar (mode terintegrasi)
-
-@interface UACCameraDotView : NSView
-@end
-
-@implementation UACCameraDotView
-- (NSView *)hitTest:(NSPoint)point { return nil; }
-- (void)drawRect:(NSRect)dirtyRect {
-    NSRect r = NSInsetRect(self.bounds, 1.0, 1.0);
-    [[NSColor colorWithCalibratedWhite:0.18 alpha:1.0] setStroke];
-    [[NSColor colorWithCalibratedWhite:0.02 alpha:1.0] setFill];
-    NSBezierPath *p = [NSBezierPath bezierPathWithOvalInRect:r];
-    [p fill];
-    [p setLineWidth:1.0];
-    [p stroke];
-}
-@end
-
 // MARK: - Window Management (Embedded vs Standalone)
 
 static pid_t gParentPid = 0;
@@ -172,24 +154,6 @@ static UACParentInfo queryParent(CGWindowID mine) {
     return info;
 }
 
-static void layoutCameraDot(NSWindow *window) {
-    NSView *content = window.contentView;
-    if (!content) return;
-    UACCameraDotView *dot = nil;
-    for (NSView *sub in content.subviews) {
-        if ([sub isKindOfClass:[UACCameraDotView class]]) { dot = (UACCameraDotView *)sub; break; }
-    }
-    if (!dot) {
-        dot = [[UACCameraDotView alloc] initWithFrame:NSZeroRect];
-        [content addSubview:dot positioned:NSWindowAbove relativeTo:nil];
-    }
-    CGFloat scale = content.bounds.size.width / 288.0;
-    CGFloat d = 10.0 * scale;
-    dot.frame = NSMakeRect((content.bounds.size.width - d) / 2.0,
-                           content.bounds.size.height - d - 12.0 * scale, d, d);
-    content.layer.cornerRadius = gRadius;
-}
-
 static void syncEmbeddedWindow(NSWindow *window) {
     // GUI sudah ditutup -> helper ikut berhenti
     if (kill(gParentPid, 0) != 0) {
@@ -213,7 +177,8 @@ static void syncEmbeddedWindow(NSWindow *window) {
         NSRect target = NSMakeRect(round(parentX + gOffsetX), round(parentY + gOffsetY), round(gWidth), round(gHeight));
         if (!NSEqualRects(window.frame, target)) {
             [window setFrame:target display:NO animate:NO];
-            layoutCameraDot(window);
+            NSView *content = window.contentView;
+            if (content) content.layer.cornerRadius = gRadius;
         }
 
         // Urutan jendela: selalu tepat di atas GUI, tapi tidak menutupi aplikasi lain
@@ -250,7 +215,6 @@ static void applyEmbeddedMode(NSWindow *window) {
         content.layer.masksToBounds = YES;
         content.layer.backgroundColor = [NSColor blackColor].CGColor;
     }
-    layoutCameraDot(window);
 
     if (!gSyncTimer) {
         __weak NSWindow *weakWindow = window;

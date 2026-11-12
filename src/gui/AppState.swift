@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import Cocoa
+import SwiftUI
 
 public struct AdbDeviceItem: Identifiable, Hashable {
     public var id: String { serial }
@@ -72,6 +73,8 @@ public final class AppState: ObservableObject {
     @Published public var isSyncOn = false
     @Published public var quality: StreamQuality = .seimbang
     @Published public var toast: String? = nil
+    @Published public var isLandscape: Bool = false
+    @Published public var screenAspectRatio: CGFloat = 9.0 / 20.0
     // Saat popover terbuka, layar HP disembunyikan sementara agar tidak menutupi popover
     @Published public var overlayOpen = false { didSet { writeHostRect() } }
 
@@ -174,6 +177,9 @@ public final class AppState: ObservableObject {
             DispatchQueue.main.async {
                 if self.devices != devs { self.devices = devs }
                 if self.isSyncOn != sync { self.isSyncOn = sync }
+            }
+            if self.activeDevice != nil {
+                self.checkRotation()
             }
         }
     }
@@ -326,6 +332,90 @@ public final class AppState: ObservableObject {
     public func sendPower() { sendKeyevent(26) }
     public func sendVolumeUp() { sendKeyevent(24) }
     public func sendVolumeDown() { sendKeyevent(25) }
+
+    // MARK: - Rotasi layar (Landscape vs Portrait)
+
+    public func checkRotation() {
+        guard let serial = activeDevice?.serial else { return }
+        let adb = adbPath
+        worker.async { [weak self] in
+            guard let self = self else { return }
+            let dispOutput = self.runShell("\(adb) -s \(serial) shell \"dumpsys display | grep -E 'mCurrentDisplayRect|mDisplayRect' | head -1\"")
+
+            var isLand = false
+            var ratio: CGFloat = 9.0 / 20.0
+            var matched = false
+
+            if let regex = try? NSRegularExpression(pattern: "-\\s*([0-9]+),\\s*([0-9]+)\\)", options: []) {
+                let nsStr = dispOutput as NSString
+                if let match = regex.firstMatch(in: dispOutput, options: [], range: NSRange(location: 0, length: nsStr.length)) {
+                    let wStr = nsStr.substring(with: match.range(at: 1))
+                    let hStr = nsStr.substring(with: match.range(at: 2))
+                    if let w = Double(wStr), let h = Double(hStr), w > 0, h > 0 {
+                        isLand = w > h
+                        ratio = CGFloat(w / h)
+                        matched = true
+                    }
+                }
+            }
+
+            if !matched {
+                let rotOutput = self.runShell("\(adb) -s \(serial) shell \"dumpsys input | grep -m 1 'SurfaceOrientation' || dumpsys window | grep -m 1 'mCurrentRotation'\"")
+                if rotOutput.contains(": 1") || rotOutput.contains(": 3") || rotOutput.contains("=1") || rotOutput.contains("=3") || rotOutput.contains("ROTATION_90") || rotOutput.contains("ROTATION_270") {
+                    isLand = true
+                    ratio = 20.0 / 9.0
+                } else {
+                    isLand = false
+                    ratio = 9.0 / 20.0
+                }
+            }
+
+            DispatchQueue.main.async {
+                if self.isLandscape != isLand || abs(self.screenAspectRatio - ratio) > 0.02 {
+                    withAnimation(.smooth(duration: 0.35)) {
+                        self.isLandscape = isLand
+                        self.screenAspectRatio = ratio
+                    }
+                    self.adaptWindowForOrientation(isLandscape: isLand)
+                }
+            }
+        }
+    }
+
+    public func toggleRotation() {
+        guard let serial = activeDevice?.serial else { return }
+        let adb = adbPath
+        let nextLand = !isLandscape
+        worker.async { [weak self] in
+            guard let self = self else { return }
+            _ = self.runShell("\(adb) -s \(serial) shell settings put system accelerometer_rotation 0")
+            _ = self.runShell("\(adb) -s \(serial) shell settings put system user_rotation \(nextLand ? 1 : 0)")
+            Thread.sleep(forTimeInterval: 0.3)
+            self.checkRotation()
+        }
+    }
+
+    private func adaptWindowForOrientation(isLandscape: Bool) {
+        guard let window = NSApp.windows.first(where: { $0.title == "Universal ADB Control" || $0.canBecomeMain }) else { return }
+        var f = window.frame
+        if isLandscape && f.width < f.height {
+            let targetW = max(f.height * 1.15, 680)
+            let targetH = max(f.width * 0.85, 460)
+            f.origin.x -= (targetW - f.width) / 2
+            f.origin.y -= (targetH - f.height) / 2
+            f.size.width = targetW
+            f.size.height = targetH
+            window.setFrame(f, display: true, animate: true)
+        } else if !isLandscape && f.width > f.height {
+            let targetW = max(f.height * 0.65, 380)
+            let targetH = max(f.width * 0.9, 680)
+            f.origin.x -= (targetW - f.width) / 2
+            f.origin.y -= (targetH - f.height) / 2
+            f.size.width = targetW
+            f.size.height = targetH
+            window.setFrame(f, display: true, animate: true)
+        }
+    }
 
     // MARK: - Sinkron clipboard (daemon)
 

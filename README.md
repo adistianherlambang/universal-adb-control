@@ -74,7 +74,7 @@ universal-adb-control/
 - **`src/frame/DeviceFrameOverlay.m`**: Dynamic library Objective-C (`libUniversalControlFrame.dylib`) yang disisipkan ke scrcpy via `DYLD_INSERT_LIBRARIES`:
   - **Stealth Mode**: Men-swizzle `setActivationPolicy:` ke `NSApplicationActivationPolicyAccessory` sehingga scrcpy tidak pernah memunculkan ikon terpisah di Dock atau App Switcher (`⌘+Tab`).
   - **Sinkronisasi Posisi 60 FPS**: Mengunci ukuran dan koordinat jendela scrcpy tepat di atas mockup layar ponsel pada GUI (`syncEmbeddedWindow`).
-  - **Punch-Hole Camera**: Menggambar kamera punch-hole dinamis di atas layar (`UACCameraDotView`).
+  - **Full-Bleed Clean Display**: Menampilkan layar penuh tanpa notch atau punch-hole yang menghalangi konten.
   - **Focus Lock & Anti-Leak**: Men-swizzle `canBecomeKeyWindow` dan `canBecomeMainWindow` pada `NSWindow` serta mengaktifkan proses secara instan saat layar diklik (`uac_sendEvent:`) sehingga 100% input keyboard dan trackpad masuk ke Android tanpa bocor ke Mac.
   - **Pintasan Background**: Mengintersepsi `⌘Q` dan `⌘W` di tingkat Cocoa event loop untuk menghentikan display helper dan menyembunyikan jendela ke background tanpa mematikan aplikasi utama.
   - **Anti-Standalone Guard**: Menolak peluncuran jendela scrcpy mengambang di luar GUI (memastikan hanya satu layar yang aktif di dalam GUI).
