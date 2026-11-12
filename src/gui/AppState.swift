@@ -10,7 +10,24 @@ public struct AdbDeviceItem: Identifiable, Hashable {
     public let isWifi: Bool
 
     public var isReady: Bool { state == "device" }
-    public var displayName: String { model.replacingOccurrences(of: "_", with: "-") }
+    public var isUnauthorized: Bool { state == "unauthorized" }
+    public var isOffline: Bool { state == "offline" }
+
+    public var displayName: String {
+        let clean = model.replacingOccurrences(of: "_", with: " ")
+        if clean.isEmpty || clean == "Android" {
+            return isWifi ? "Perangkat Wi-Fi" : "Perangkat USB"
+        }
+        return clean
+    }
+
+    public var connectionType: String {
+        isWifi ? "Wi-Fi" : "USB"
+    }
+
+    public var connectionIcon: String {
+        isWifi ? "wifi" : "cable.connector.horizontal"
+    }
 }
 
 // Preset kualitas streaming (menyembunyikan angka bitrate/fps/codec dari pengguna)
@@ -320,21 +337,93 @@ public final class AppState: ObservableObject {
         }
     }
 
-    // MARK: - Wi-Fi
+    // MARK: - Wi-Fi & Pairing
 
     public func connectWifi(_ address: String) {
         let addr = address.trimmingCharacters(in: .whitespaces)
         guard !addr.isEmpty else { return }
         let target = addr.contains(":") ? addr : "\(addr):5555"
         let adb = adbPath
+        showToast("Menghubungkan ke \(target)...")
         worker.async { [weak self] in
             guard let self = self else { return }
             let res = self.runShell("\(adb) connect \(target)").lowercased()
             DispatchQueue.main.async {
                 if res.contains("connected to") && !res.contains("cannot") {
                     self.selectDevice(target)
+                    self.showToast("Terhubung ke \(target)")
                 } else {
-                    self.showToast("Gagal terhubung")
+                    self.showToast("Gagal terhubung ke \(target)")
+                }
+                self.refresh()
+            }
+        }
+    }
+
+    public func pairAndConnect(pairingAddress: String, code: String, connectPort: String = "") {
+        let pairAddr = pairingAddress.trimmingCharacters(in: .whitespaces)
+        let pin = code.trimmingCharacters(in: .whitespaces)
+        let connPort = connectPort.trimmingCharacters(in: .whitespaces)
+        guard !pairAddr.isEmpty, !pin.isEmpty else {
+            showToast("Masukkan alamat dan kode pairing")
+            return
+        }
+        let adb = adbPath
+        showToast("Memasangkan perangkat...")
+        worker.async { [weak self] in
+            guard let self = self else { return }
+            let pairOutput = self.runShell("\(adb) pair \(pairAddr) \(pin)")
+            if pairOutput.contains("Successfully paired to") {
+                let host = pairAddr.components(separatedBy: ":").first ?? pairAddr
+                let target = connPort.isEmpty ? pairAddr : "\(host):\(connPort)"
+                Thread.sleep(forTimeInterval: 0.5)
+                let connOutput = self.runShell("\(adb) connect \(target)").lowercased()
+                DispatchQueue.main.async {
+                    if connOutput.contains("connected to") && !connOutput.contains("cannot") {
+                        self.selectDevice(target)
+                        self.showToast("Berhasil dipasangkan & terhubung")
+                    } else {
+                        self.showToast("Berhasil dipasangkan!")
+                    }
+                    self.refresh()
+                }
+            } else {
+                let msg = pairOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+                DispatchQueue.main.async {
+                    self.showToast(msg.isEmpty ? "Gagal memasangkan perangkat" : msg)
+                    self.refresh()
+                }
+            }
+        }
+    }
+
+    public func enableTcpip(serial: String) {
+        let adb = adbPath
+        showToast("Mengaktifkan mode Wi-Fi...")
+        worker.async { [weak self] in
+            guard let self = self else { return }
+            let res = self.runShell("\(adb) -s \(serial) tcpip 5555")
+            let ipCmd = "\(adb) -s \(serial) shell ip -f inet addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1"
+            let ip = self.runShell(ipCmd).trimmingCharacters(in: .whitespacesAndNewlines)
+
+            DispatchQueue.main.async {
+                if res.contains("restarting in TCP mode") {
+                    if !ip.isEmpty {
+                        self.showToast("Mode Wi-Fi aktif. Menghubungkan ke \(ip):5555...")
+                        self.worker.async {
+                            Thread.sleep(forTimeInterval: 1.0)
+                            _ = self.runShell("\(adb) connect \(ip):5555")
+                            DispatchQueue.main.async {
+                                self.showToast("Terhubung via Wi-Fi: \(ip):5555")
+                                self.refresh()
+                            }
+                        }
+                    } else {
+                        self.showToast("Mode Wi-Fi aktif (Port 5555). Cabut USB & hubungkan via IP")
+                    }
+                } else {
+                    let msg = res.trimmingCharacters(in: .whitespacesAndNewlines)
+                    self.showToast(msg.isEmpty ? "Gagal mengaktifkan mode Wi-Fi" : msg)
                 }
                 self.refresh()
             }

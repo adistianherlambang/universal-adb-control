@@ -96,7 +96,7 @@ universal-adb-control/
   - Mockup bodi smartphone proporsional dengan sudut melengkung halus dan tombol fisik samping interaktif.
   - Dock navigasi bawah bergaya kapsul kaca melayang (Kembali, Beranda, Recents, Mulai/Berhenti).
   - Komponen penanda geometri (`ScreenAnchor` / `AnchorView`) untuk sinkronisasi posisi layar overlay.
-  - Popover pemilihan perangkat dan pengaturan profil streaming tanpa badge atau teks yang membingungkan.
+  - Popover pemilihan perangkat dengan deteksi visual USB / Wi-Fi, pairing kode 6-digit (Android 11+), dan konfigurasi profil streaming.
 
 #### 6. Modul Helper Launcher (`src/helper/`)
 - **`src/helper/UniversalADBControlDisplay.c`**: Binary launcher C ringkas yang dikemas di dalam `UniversalADBControlDisplay.app` untuk menyuntikkan `libUniversalControlFrame.dylib` ke scrcpy secara terisolasi tanpa membuat entri Dock baru.
