@@ -296,7 +296,7 @@ public final class AppState: ObservableObject {
         worker.async { [weak self] in
             guard let self = self else { return }
             // Sembunyikan keyboard virtual Android saat keyboard fisik aktif
-            _ = self.runShell("\(adb) -s \(serial) shell settings put secure show_ime_with_hard_keyboard 0")
+            _ = self.runShell("\(adb) -s \"\(serial)\" shell settings put secure show_ime_with_hard_keyboard 0")
 
             let p = Process()
             p.executableURL = URL(fileURLWithPath: bin)
@@ -311,6 +311,7 @@ public final class AppState: ObservableObject {
             p.standardError = outPipe
 
             let fpsRegex = try? NSRegularExpression(pattern: "([0-9]+(?:\\.[0-9]+)?)\\s*fps", options: .caseInsensitive)
+            let textureRegex = try? NSRegularExpression(pattern: "Texture.*?([0-9]+)x([0-9]+)", options: .caseInsensitive)
             outPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
                 let data = handle.availableData
                 if data.isEmpty {
@@ -325,6 +326,25 @@ public final class AppState: ObservableObject {
                             let roundedFps = Int(round(fpsVal))
                             DispatchQueue.main.async {
                                 self?.currentFps = roundedFps
+                            }
+                        }
+                    }
+                    if let regex = textureRegex,
+                       let match = regex.matches(in: str, options: [], range: NSRange(location: 0, length: (str as NSString).length)).last {
+                        let wStr = (str as NSString).substring(with: match.range(at: 1))
+                        let hStr = (str as NSString).substring(with: match.range(at: 2))
+                        if let w = Double(wStr), let h = Double(hStr), w > 0, h > 0 {
+                            let isLand = w > h
+                            let ratio = CGFloat(w / h)
+                            DispatchQueue.main.async {
+                                guard let self = self else { return }
+                                if self.isLandscape != isLand || abs(self.screenAspectRatio - ratio) > 0.02 {
+                                    withAnimation(.smooth(duration: 0.35)) {
+                                        self.isLandscape = isLand
+                                        self.screenAspectRatio = ratio
+                                    }
+                                    self.adaptWindowForOrientation(isLandscape: isLand)
+                                }
                             }
                         }
                     }
@@ -466,7 +486,7 @@ public final class AppState: ObservableObject {
         guard let serial = activeDevice?.serial else { return }
         let adb = adbPath
         worker.async { [weak self] in
-            _ = self?.runShell("\(adb) -s \(serial) shell input keyevent \(code)")
+            _ = self?.runShell("\(adb) -s \"\(serial)\" shell input keyevent \(code)")
         }
     }
 
@@ -489,7 +509,7 @@ public final class AppState: ObservableObject {
             var matched = false
 
             // 1. Cek langsung dari mCurrentDisplayRect (paling akurat untuk semua Android & vendor)
-            let dispOutput = self.runShell("\(adb) -s \(serial) shell \"dumpsys display | grep -m 1 'mCurrentDisplayRect'\"")
+            let dispOutput = self.runShell("\(adb) -s \"\(serial)\" shell \"dumpsys display | grep -m 1 'mCurrentDisplayRect'\"")
             if let regex = try? NSRegularExpression(pattern: "-\\s*([0-9]+),\\s*([0-9]+)\\)", options: []) {
                 let nsStr = dispOutput as NSString
                 if let match = regex.firstMatch(in: dispOutput, options: [], range: NSRange(location: 0, length: nsStr.length)) {
@@ -505,7 +525,7 @@ public final class AppState: ObservableObject {
 
             // 2. Fallback jika mCurrentDisplayRect tidak ditemukan
             if !matched {
-                let rotOutput = self.runShell("\(adb) -s \(serial) shell \"cmd window user-rotation || dumpsys window | grep -m 1 'mCurrentRotation'\"")
+                let rotOutput = self.runShell("\(adb) -s \"\(serial)\" shell \"cmd window user-rotation || dumpsys window | grep -m 1 'mCurrentRotation'\"")
                 if rotOutput.contains("ROTATION_90") || rotOutput.contains("ROTATION_270") || rotOutput.contains("lock 1") || rotOutput.contains("lock 3") {
                     isLand = true
                     ratio = 20.0 / 9.0
@@ -533,7 +553,7 @@ public final class AppState: ObservableObject {
         let nextLand = !isLandscape
         worker.async { [weak self] in
             guard let self = self else { return }
-            _ = self.runShell("\(adb) -s \(serial) shell \"cmd window user-rotation lock \(nextLand ? 1 : 0) || (settings put system accelerometer_rotation 0 && settings put system user_rotation \(nextLand ? 1 : 0))\"")
+            _ = self.runShell("\(adb) -s \"\(serial)\" shell \"cmd window user-rotation lock \(nextLand ? 1 : 0) || (settings put system accelerometer_rotation 0 && settings put system user_rotation \(nextLand ? 1 : 0))\"")
             Thread.sleep(forTimeInterval: 0.3)
             self.checkRotation()
         }
@@ -630,8 +650,8 @@ public final class AppState: ObservableObject {
         showToast("Mengaktifkan mode Wi-Fi...")
         worker.async { [weak self] in
             guard let self = self else { return }
-            let res = self.runShell("\(adb) -s \(serial) tcpip 5555")
-            let ipCmd = "\(adb) -s \(serial) shell ip -f inet addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1"
+            let res = self.runShell("\(adb) -s \"\(serial)\" tcpip 5555")
+            let ipCmd = "\(adb) -s \"\(serial)\" shell ip -f inet addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1"
             let ip = self.runShell(ipCmd).trimmingCharacters(in: .whitespacesAndNewlines)
 
             DispatchQueue.main.async {
