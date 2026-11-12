@@ -138,8 +138,8 @@ static UACParentInfo queryParent(CGWindowID mine) {
         if (pid == gParentPid) {
             CGRect b;
             CGRectMakeWithDictionaryRepresentation((__bridge CFDictionaryRef)w[(id)kCGWindowBounds], &b);
-            // Jendela utama GUI (abaikan popover / menu kecil)
-            if (b.size.width >= 300 && b.size.height >= 500) {
+            // Jendela utama GUI (mendukung baik potret maupun lanskap)
+            if (b.size.width >= 240 && b.size.height >= 240) {
                 info.found = YES;
                 info.bounds = b;
                 info.number = num;
@@ -176,9 +176,12 @@ static void syncEmbeddedWindow(NSWindow *window) {
         CGFloat parentY = screenH - (parent.bounds.origin.y + parent.bounds.size.height);
         NSRect target = NSMakeRect(round(parentX + gOffsetX), round(parentY + gOffsetY), round(gWidth), round(gHeight));
         if (!NSEqualRects(window.frame, target)) {
-            [window setFrame:target display:NO animate:NO];
+            [window setFrame:target display:YES animate:NO];
             NSView *content = window.contentView;
-            if (content) content.layer.cornerRadius = gRadius;
+            if (content) {
+                content.layer.cornerRadius = gRadius;
+                [content setNeedsDisplay:YES];
+            }
         }
 
         // Urutan jendela: selalu tepat di atas GUI, tapi tidak menutupi aplikasi lain

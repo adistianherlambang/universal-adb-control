@@ -351,46 +351,31 @@ public final class AppState: ObservableObject {
             var ratio: CGFloat = 9.0 / 20.0
             var matched = false
 
-            // 1. Cek dari window displays (sangat cepat, ~0.02s tanpa beban jaringan)
-            let winOutput = self.runShell("\(adb) -s \(serial) shell \"dumpsys window displays | grep -m 1 'cur='\"")
-            if let regex = try? NSRegularExpression(pattern: "cur=([0-9]+)x([0-9]+)", options: []) {
-                let nsStr = winOutput as NSString
-                if let match = regex.firstMatch(in: winOutput, options: [], range: NSRange(location: 0, length: nsStr.length)) {
-                    let wStr = nsStr.substring(with: match.range(at: 1))
-                    let hStr = nsStr.substring(with: match.range(at: 2))
-                    if let w = Double(wStr), let h = Double(hStr), w > 0, h > 0 {
-                        isLand = w > h
-                        ratio = CGFloat(w / h)
-                        matched = true
-                    }
-                }
+            // 1. Cek rotasi dari window manager & user-rotation (sangat cepat & akurat, ~0.01s)
+            let rotOutput = self.runShell("\(adb) -s \(serial) shell \"dumpsys window | grep -m 1 'mCurrentRotation' || cmd window user-rotation\"")
+            if rotOutput.contains("ROTATION_90") || rotOutput.contains("ROTATION_270") || rotOutput.contains("lock 1") || rotOutput.contains("lock 3") {
+                isLand = true
+                ratio = 20.0 / 9.0
+                matched = true
+            } else if rotOutput.contains("ROTATION_0") || rotOutput.contains("ROTATION_180") || rotOutput.contains("lock 0") || rotOutput.contains("lock 2") {
+                isLand = false
+                ratio = 9.0 / 20.0
+                matched = true
             }
 
-            // 2. Fallback jika cur= tidak ditemukan
+            // 2. Fallback jika diperlukan dari window displays
             if !matched {
-                let dispOutput = self.runShell("\(adb) -s \(serial) shell \"dumpsys display | grep -E 'mCurrentDisplayRect|mDisplayRect' | head -1\"")
-                if let regex = try? NSRegularExpression(pattern: "-\\s*([0-9]+),\\s*([0-9]+)\\)", options: []) {
-                    let nsStr = dispOutput as NSString
-                    if let match = regex.firstMatch(in: dispOutput, options: [], range: NSRange(location: 0, length: nsStr.length)) {
+                let winOutput = self.runShell("\(adb) -s \(serial) shell \"dumpsys window displays | grep -m 1 'cur='\"")
+                if let regex = try? NSRegularExpression(pattern: "cur=([0-9]+)x([0-9]+)", options: []) {
+                    let nsStr = winOutput as NSString
+                    if let match = regex.firstMatch(in: winOutput, options: [], range: NSRange(location: 0, length: nsStr.length)) {
                         let wStr = nsStr.substring(with: match.range(at: 1))
                         let hStr = nsStr.substring(with: match.range(at: 2))
                         if let w = Double(wStr), let h = Double(hStr), w > 0, h > 0 {
                             isLand = w > h
                             ratio = CGFloat(w / h)
-                            matched = true
                         }
                     }
-                }
-            }
-
-            if !matched {
-                let rotOutput = self.runShell("\(adb) -s \(serial) shell \"dumpsys input | grep -m 1 'SurfaceOrientation' || dumpsys window | grep -m 1 'mCurrentRotation'\"")
-                if rotOutput.contains(": 1") || rotOutput.contains(": 3") || rotOutput.contains("=1") || rotOutput.contains("=3") || rotOutput.contains("ROTATION_90") || rotOutput.contains("ROTATION_270") {
-                    isLand = true
-                    ratio = 20.0 / 9.0
-                } else {
-                    isLand = false
-                    ratio = 9.0 / 20.0
                 }
             }
 
@@ -412,8 +397,7 @@ public final class AppState: ObservableObject {
         let nextLand = !isLandscape
         worker.async { [weak self] in
             guard let self = self else { return }
-            _ = self.runShell("\(adb) -s \(serial) shell settings put system accelerometer_rotation 0")
-            _ = self.runShell("\(adb) -s \(serial) shell settings put system user_rotation \(nextLand ? 1 : 0)")
+            _ = self.runShell("\(adb) -s \(serial) shell \"cmd window user-rotation lock \(nextLand ? 1 : 0) || (settings put system accelerometer_rotation 0 && settings put system user_rotation \(nextLand ? 1 : 0))\"")
             Thread.sleep(forTimeInterval: 0.3)
             self.checkRotation()
         }
