@@ -178,7 +178,7 @@ public final class AppState: ObservableObject {
                 if self.devices != devs { self.devices = devs }
                 if self.isSyncOn != sync { self.isSyncOn = sync }
             }
-            if self.activeDevice != nil && !self.isStreaming {
+            if self.activeDevice != nil {
                 self.checkRotation()
             }
         }
@@ -351,31 +351,30 @@ public final class AppState: ObservableObject {
             var ratio: CGFloat = 9.0 / 20.0
             var matched = false
 
-            // 1. Cek rotasi dari window manager & user-rotation (sangat cepat & akurat, ~0.01s)
-            let rotOutput = self.runShell("\(adb) -s \(serial) shell \"dumpsys window | grep -m 1 'mCurrentRotation' || cmd window user-rotation\"")
-            if rotOutput.contains("ROTATION_90") || rotOutput.contains("ROTATION_270") || rotOutput.contains("lock 1") || rotOutput.contains("lock 3") {
-                isLand = true
-                ratio = 20.0 / 9.0
-                matched = true
-            } else if rotOutput.contains("ROTATION_0") || rotOutput.contains("ROTATION_180") || rotOutput.contains("lock 0") || rotOutput.contains("lock 2") {
-                isLand = false
-                ratio = 9.0 / 20.0
-                matched = true
+            // 1. Cek langsung dari mCurrentDisplayRect (paling akurat untuk semua Android & vendor)
+            let dispOutput = self.runShell("\(adb) -s \(serial) shell \"dumpsys display | grep -m 1 'mCurrentDisplayRect'\"")
+            if let regex = try? NSRegularExpression(pattern: "-\\s*([0-9]+),\\s*([0-9]+)\\)", options: []) {
+                let nsStr = dispOutput as NSString
+                if let match = regex.firstMatch(in: dispOutput, options: [], range: NSRange(location: 0, length: nsStr.length)) {
+                    let wStr = nsStr.substring(with: match.range(at: 1))
+                    let hStr = nsStr.substring(with: match.range(at: 2))
+                    if let w = Double(wStr), let h = Double(hStr), w > 0, h > 0 {
+                        isLand = w > h
+                        ratio = CGFloat(w / h)
+                        matched = true
+                    }
+                }
             }
 
-            // 2. Fallback jika diperlukan dari window displays
+            // 2. Fallback jika mCurrentDisplayRect tidak ditemukan
             if !matched {
-                let winOutput = self.runShell("\(adb) -s \(serial) shell \"dumpsys window displays | grep -m 1 'cur='\"")
-                if let regex = try? NSRegularExpression(pattern: "cur=([0-9]+)x([0-9]+)", options: []) {
-                    let nsStr = winOutput as NSString
-                    if let match = regex.firstMatch(in: winOutput, options: [], range: NSRange(location: 0, length: nsStr.length)) {
-                        let wStr = nsStr.substring(with: match.range(at: 1))
-                        let hStr = nsStr.substring(with: match.range(at: 2))
-                        if let w = Double(wStr), let h = Double(hStr), w > 0, h > 0 {
-                            isLand = w > h
-                            ratio = CGFloat(w / h)
-                        }
-                    }
+                let rotOutput = self.runShell("\(adb) -s \(serial) shell \"cmd window user-rotation || dumpsys window | grep -m 1 'mCurrentRotation'\"")
+                if rotOutput.contains("ROTATION_90") || rotOutput.contains("ROTATION_270") || rotOutput.contains("lock 1") || rotOutput.contains("lock 3") {
+                    isLand = true
+                    ratio = 20.0 / 9.0
+                } else {
+                    isLand = false
+                    ratio = 9.0 / 20.0
                 }
             }
 
@@ -405,18 +404,23 @@ public final class AppState: ObservableObject {
 
     private func adaptWindowForOrientation(isLandscape: Bool) {
         guard let window = NSApp.windows.first(where: { $0.title == "Universal ADB Control" || $0.canBecomeMain }) else { return }
+        if isLandscape {
+            window.minSize = NSSize(width: 480, height: 320)
+        } else {
+            window.minSize = NSSize(width: 320, height: 480)
+        }
         var f = window.frame
         if isLandscape && f.width < f.height {
-            let targetW = max(f.height * 1.15, 680)
-            let targetH = max(f.width * 0.85, 460)
+            let targetW = max(f.height * 1.25, 720)
+            let targetH = max(f.width * 0.75, 420)
             f.origin.x -= (targetW - f.width) / 2
             f.origin.y -= (targetH - f.height) / 2
             f.size.width = targetW
             f.size.height = targetH
             window.setFrame(f, display: true, animate: true)
         } else if !isLandscape && f.width > f.height {
-            let targetW = max(f.height * 0.65, 380)
-            let targetH = max(f.width * 0.9, 680)
+            let targetW = max(f.height * 0.60, 420)
+            let targetH = max(f.width * 0.95, 740)
             f.origin.x -= (targetW - f.width) / 2
             f.origin.y -= (targetH - f.height) / 2
             f.size.width = targetW

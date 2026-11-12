@@ -17,7 +17,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.minSize = NSSize(width: 380, height: 700)
+        window.minSize = NSSize(width: 320, height: 360)
         window.title = "Universal ADB Control"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
