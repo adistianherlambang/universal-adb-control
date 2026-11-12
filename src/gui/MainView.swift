@@ -317,23 +317,73 @@ private struct DevicePopover: View {
     @State private var directAddress = ""
     @State private var pairAddress = ""
     @State private var pairCode = ""
+    @State private var isAddingDevice = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if state.devices.isEmpty {
-                Text("Tidak ada perangkat")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 4)
+                // Saat belum ada perangkat terhubung: langsung tampilkan input koneksi
+                connectionSection
             } else {
+                // Saat sudah ada perangkat: tampilkan daftar perangkat
                 ForEach(state.devices) { dev in
                     deviceRow(dev)
                 }
+
+                if !isAddingDevice {
+                    Button {
+                        withAnimation(.smooth(duration: 0.2)) {
+                            isAddingDevice = true
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("Tambah Perangkat Lain")
+                                .font(.system(size: 11.5, weight: .medium))
+                        }
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 28)
+                        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    }
+                    .buttonStyle(.interactiveGlass)
+                    .liquidGlass(in: RoundedRectangle(cornerRadius: 7, style: .continuous), interactive: true)
+                    .padding(.top, 2)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Tambah Perangkat")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button {
+                                withAnimation(.smooth(duration: 0.2)) {
+                                    isAddingDevice = false
+                                }
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 18, height: 18)
+                                    .contentShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.top, 4)
+
+                        connectionSection
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
+        }
+        .padding(12)
+        .frame(width: 260)
+    }
 
-            Divider().opacity(0.3)
-
+    private var connectionSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
             Picker("", selection: $mode) {
                 ForEach(ConnectionMode.allCases) { m in
                     Text(m.rawValue).tag(m)
@@ -392,41 +442,56 @@ private struct DevicePopover: View {
                 }
             }
         }
-        .padding(12)
-        .frame(width: 250)
     }
 
     private func deviceRow(_ dev: AdbDeviceItem) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: dev.isWifi ? "wifi" : "cable.connector")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .frame(width: 16)
-            Text(dev.displayName)
-                .font(.system(size: 12))
-                .foregroundStyle(dev.isReady ? .primary : .secondary)
-            Spacer(minLength: 8)
-            if dev.serial == state.activeDevice?.serial {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.primary)
+        let isSelected = dev.serial == state.activeDevice?.serial
+        return HStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill((dev.isWifi ? Color.blue : Color.green).opacity(0.14))
+                    .frame(width: 24, height: 24)
+                Image(systemName: dev.isWifi ? "wifi" : "cable.connector")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(dev.isWifi ? Color.blue : Color.green)
             }
-            if dev.isWifi {
-                Button {
-                    state.disconnect(dev.serial)
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .bold))
+
+            Text(dev.displayName)
+                .font(.system(size: 12.5, weight: isSelected ? .semibold : .regular))
+                .foregroundStyle(dev.isReady ? .primary : .secondary)
+
+            Spacer(minLength: 8)
+
+            if isSelected {
+                ZStack {
+                    Circle()
+                        .fill(Color.accentColor.opacity(0.20))
+                        .overlay(Circle().stroke(Color.accentColor.opacity(0.40), lineWidth: 0.8))
                         .frame(width: 18, height: 18)
-                        .contentShape(Circle())
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 8.5, weight: .bold))
+                        .foregroundStyle(Color.accentColor)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("Putuskan")
+            }
+
+            if dev.isWifi {
+                DeviceDisconnectButton {
+                    state.disconnect(dev.serial)
+                }
             }
         }
         .padding(.horizontal, 8)
-        .frame(height: 30)
+        .frame(height: 34)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(Color.white.opacity(0.16), lineWidth: 0.8)
+                    )
+            }
+        }
         .contentShape(Rectangle())
         .onTapGesture {
             guard dev.isReady else { return }
@@ -438,11 +503,36 @@ private struct DevicePopover: View {
     private func submitPair() {
         state.pairAndConnect(pairingAddress: pairAddress, code: pairCode)
         pairCode = ""
+        isAddingDevice = false
     }
 
     private func submitDirect() {
         state.connectWifi(directAddress)
         directAddress = ""
+        isAddingDevice = false
+    }
+}
+
+private struct DeviceDisconnectButton: View {
+    let action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(hover ? Color.red.opacity(0.22) : Color.white.opacity(0.06))
+                    .overlay(Circle().stroke(hover ? Color.red.opacity(0.40) : Color.white.opacity(0.14), lineWidth: 0.8))
+                    .frame(width: 20, height: 20)
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(hover ? Color.red : Color.secondary)
+            }
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { h in withAnimation(.smooth(duration: 0.15)) { hover = h } }
+        .help("Putuskan koneksi")
     }
 }
 

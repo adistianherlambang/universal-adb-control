@@ -178,7 +178,7 @@ public final class AppState: ObservableObject {
                 if self.devices != devs { self.devices = devs }
                 if self.isSyncOn != sync { self.isSyncOn = sync }
             }
-            if self.activeDevice != nil {
+            if self.activeDevice != nil && !self.isStreaming {
                 self.checkRotation()
             }
         }
@@ -241,10 +241,17 @@ public final class AppState: ObservableObject {
             return
         }
         isStreaming = true
+        checkRotation()
         writeHostRect()
 
         let serial = device.serial
         let rect = hostRect
+        let isWifi = device.isWifi
+        let codec = isWifi ? "h264" : videoCodec
+        let buffer = isWifi ? "45" : videoBufferMs
+        let maxBitrate = isWifi ? (quality == .tajam ? "4M" : quality.bitrate) : quality.bitrate
+        let size = isWifi ? (quality == .tajam ? "1280" : quality.maxSize) : quality.maxSize
+
         let args = [
             "-s", serial,
             "--window-borderless",
@@ -253,11 +260,11 @@ public final class AppState: ObservableObject {
             "--stay-awake",
             "--shortcut-mod=rctrl",
             "--no-audio",
-            "--video-codec=\(videoCodec)",
-            "--video-bit-rate=\(quality.bitrate)",
-            "--max-size=\(quality.maxSize)",
+            "--video-codec=\(codec)",
+            "--video-bit-rate=\(maxBitrate)",
+            "--max-size=\(size)",
             "--max-fps=\(maxFps)",
-            "--video-buffer=\(videoBufferMs)",
+            "--video-buffer=\(buffer)",
             "--keyboard=sdk",
             "--mouse=sdk",
             "--window-title=Universal ADB Control"
@@ -340,21 +347,38 @@ public final class AppState: ObservableObject {
         let adb = adbPath
         worker.async { [weak self] in
             guard let self = self else { return }
-            let dispOutput = self.runShell("\(adb) -s \(serial) shell \"dumpsys display | grep -E 'mCurrentDisplayRect|mDisplayRect' | head -1\"")
-
             var isLand = false
             var ratio: CGFloat = 9.0 / 20.0
             var matched = false
 
-            if let regex = try? NSRegularExpression(pattern: "-\\s*([0-9]+),\\s*([0-9]+)\\)", options: []) {
-                let nsStr = dispOutput as NSString
-                if let match = regex.firstMatch(in: dispOutput, options: [], range: NSRange(location: 0, length: nsStr.length)) {
+            // 1. Cek dari window displays (sangat cepat, ~0.02s tanpa beban jaringan)
+            let winOutput = self.runShell("\(adb) -s \(serial) shell \"dumpsys window displays | grep -m 1 'cur='\"")
+            if let regex = try? NSRegularExpression(pattern: "cur=([0-9]+)x([0-9]+)", options: []) {
+                let nsStr = winOutput as NSString
+                if let match = regex.firstMatch(in: winOutput, options: [], range: NSRange(location: 0, length: nsStr.length)) {
                     let wStr = nsStr.substring(with: match.range(at: 1))
                     let hStr = nsStr.substring(with: match.range(at: 2))
                     if let w = Double(wStr), let h = Double(hStr), w > 0, h > 0 {
                         isLand = w > h
                         ratio = CGFloat(w / h)
                         matched = true
+                    }
+                }
+            }
+
+            // 2. Fallback jika cur= tidak ditemukan
+            if !matched {
+                let dispOutput = self.runShell("\(adb) -s \(serial) shell \"dumpsys display | grep -E 'mCurrentDisplayRect|mDisplayRect' | head -1\"")
+                if let regex = try? NSRegularExpression(pattern: "-\\s*([0-9]+),\\s*([0-9]+)\\)", options: []) {
+                    let nsStr = dispOutput as NSString
+                    if let match = regex.firstMatch(in: dispOutput, options: [], range: NSRange(location: 0, length: nsStr.length)) {
+                        let wStr = nsStr.substring(with: match.range(at: 1))
+                        let hStr = nsStr.substring(with: match.range(at: 2))
+                        if let w = Double(wStr), let h = Double(hStr), w > 0, h > 0 {
+                            isLand = w > h
+                            ratio = CGFloat(w / h)
+                            matched = true
+                        }
                     }
                 }
             }
