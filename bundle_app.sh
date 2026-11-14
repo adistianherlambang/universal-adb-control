@@ -29,6 +29,8 @@ cat << EOF > "${CONTENTS_DIR}/Info.plist"
 <dict>
     <key>CFBundleExecutable</key>
     <string>UniversalADBControlGUI</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.universal.adb.control.gui</string>
     <key>CFBundleName</key>
@@ -47,13 +49,20 @@ cat << EOF > "${CONTENTS_DIR}/Info.plist"
 </plist>
 EOF
 
+if [ -f "assets/AppIcon.icns" ]; then
+    cp assets/AppIcon.icns "${RESOURCES_DIR}/AppIcon.icns"
+fi
+if [ -f "assets/adbLogo.png" ]; then
+    cp assets/adbLogo.png "${RESOURCES_DIR}/adbLogo.png"
+fi
+
 # Menyiapkan UniversalADBControlDisplay helper bundle
 USER_HELPERS="$HOME/.universal-adb-control/helpers"
 mkdir -p "$USER_HELPERS"
 
 setup_display_bundle() {
     local target_app="$1"
-    mkdir -p "${target_app}/Contents/MacOS"
+    mkdir -p "${target_app}/Contents/MacOS" "${target_app}/Contents/Resources"
     cat << EOF > "${target_app}/Contents/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -61,6 +70,8 @@ setup_display_bundle() {
 <dict>
     <key>CFBundleExecutable</key>
     <string>UniversalADBControlDisplay</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.universal.adb.control.display</string>
     <key>CFBundleName</key>
@@ -77,6 +88,9 @@ EOF
     rm -f "${target_app}/Contents/MacOS/UniversalADBControlDisplay"
     cp bin/UniversalADBControlDisplay "${target_app}/Contents/MacOS/UniversalADBControlDisplay"
     chmod +x "${target_app}/Contents/MacOS/UniversalADBControlDisplay"
+    if [ -f "assets/AppIcon.icns" ]; then
+        cp assets/AppIcon.icns "${target_app}/Contents/Resources/AppIcon.icns"
+    fi
 }
 
 setup_display_bundle "${HELPERS_DIR}/UniversalADBControlDisplay.app"

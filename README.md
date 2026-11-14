@@ -1,6 +1,16 @@
-# Universal ADB Control
-
-Aplikasi kontrol nirkabel & kabel untuk mengendalikan HP Android dari Mac secara universal (Mouse, Keyboard, dan Sinkronisasi Clipboard dua arah secara instan).
+<div align="center">
+  <img src="assets/adbLogo.png" alt="Universal ADB Control Logo" width="128" height="128" />
+  <h1>Universal ADB Control</h1>
+  <p><strong>Aplikasi kontrol nirkabel & kabel untuk mengendalikan HP Android dari Mac secara universal</strong></p>
+  <p><em>Seamless Mouse, Keyboard, Layar Terintegrasi & Sinkronisasi Clipboard 2-Arah Berkecepatan Tinggi</em></p>
+  <p>
+    <img src="https://img.shields.io/badge/Platform-macOS-black?logo=apple" alt="macOS" />
+    <img src="https://img.shields.io/badge/Android-11%2B-3DDC84?logo=android&logoColor=white" alt="Android" />
+    <img src="https://img.shields.io/badge/Language-Swift%206%20%7C%20ObjC-F05138?logo=swift&logoColor=white" alt="Swift" />
+    <img src="https://img.shields.io/badge/UI-Liquid%20Glass%20%28SwiftUI%29-007AFF" alt="Liquid Glass" />
+    <img src="https://img.shields.io/badge/License-MIT-blue" alt="License" />
+  </p>
+</div>
 
 ---
 
@@ -34,6 +44,10 @@ Setiap berkas dalam arsitektur Universal ADB Control dirancang dengan tanggung j
 
 ```text
 universal-adb-control/
+├── assets/                             # Branding resmi (logo visual, icon macOS, & banner)
+│   ├── adbLogo.jpg                     # Logo asli ADB Android
+│   ├── adbLogo.png                     # Logo sRGB untuk web & tampilan in-app
+│   └── AppIcon.icns                    # macOS Application Iconset (16px - 1024px)
 ├── bin/                                # Biner hasil kompilasi & macOS App Bundle (gitignored)
 ├── src/
 │   ├── cli/

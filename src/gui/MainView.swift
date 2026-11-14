@@ -36,6 +36,12 @@ struct MainView: View {
                         Image(systemName: dev.isWifi ? "wifi" : "cable.connector")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.secondary)
+                    } else if let logo = loadBrandLogo() {
+                        Image(nsImage: logo)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 14, height: 14)
+                            .clipShape(Circle())
                     }
                     Text(state.activeDevice?.displayName ?? "Tidak ada perangkat")
                         .font(.system(size: 13, weight: .semibold))
@@ -299,18 +305,64 @@ private struct PhoneView: View {
                     .foregroundStyle(.white.opacity(0.35))
             }
         } else {
-            Button(action: onConnect) {
-                Image(systemName: "plus")
-                    .font(.system(size: 22, weight: .medium))
+            VStack(spacing: 16) {
+                if let logo = loadBrandLogo() {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(Color.white.opacity(0.10))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                    .stroke(Color.white.opacity(0.20), lineWidth: 1)
+                            )
+                            .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
+                        Image(nsImage: logo)
+                            .resizable()
+                            .scaledToFit()
+                            .padding(12)
+                    }
+                    .frame(width: 72, height: 72)
+                }
+
+                VStack(spacing: 4) {
+                    Text("Universal ADB Control")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+
+                    Text("Hubungkan perangkat untuk memulai")
+                        .font(.system(size: 10.5, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.55))
+                }
+
+                Button(action: onConnect) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("Tambah Perangkat")
+                            .font(.system(size: 12, weight: .medium))
+                    }
                     .foregroundStyle(.white)
-                    .frame(width: 56, height: 56)
-                    .contentShape(Circle())
+                    .padding(.horizontal, 14)
+                    .frame(height: 32)
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.interactiveGlass)
+                .liquidGlass(in: Capsule(), interactive: true, tint: .accentColor)
+                .help("Hubungkan perangkat Android")
             }
-            .buttonStyle(.interactiveGlass)
-            .liquidGlass(in: Circle(), interactive: true)
-            .help("Hubungkan perangkat")
         }
     }
+}
+
+private func loadBrandLogo() -> NSImage? {
+    if let img = NSImage(named: "adbLogo") { return img }
+    if let path = Bundle.main.path(forResource: "adbLogo", ofType: "png"), let img = NSImage(contentsOfFile: path) {
+        return img
+    }
+    let localPath = ("assets/adbLogo.png" as NSString).expandingTildeInPath
+    if let img = NSImage(contentsOfFile: localPath) { return img }
+    let rootPath = ("adbLogo.jpg" as NSString).expandingTildeInPath
+    if let img = NSImage(contentsOfFile: rootPath) { return img }
+    return nil
 }
 
 private struct SideKey: View {
