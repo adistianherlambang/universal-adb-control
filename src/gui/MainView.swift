@@ -749,7 +749,7 @@ final class AnchorView: NSView {
         observers.forEach(NotificationCenter.default.removeObserver)
         observers.removeAll()
         guard let window else { return }
-        for name in [NSWindow.didResizeNotification, NSWindow.didEndLiveResizeNotification] {
+        for name in [NSWindow.didResizeNotification, NSWindow.didEndLiveResizeNotification, NSWindow.didMoveNotification] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
                 self?.report()
             })

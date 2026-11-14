@@ -4,6 +4,28 @@ import Cocoa
 import SwiftUI
 import Darwin
 
+public struct UACLiveGeometry {
+    public var screenX: Double
+    public var screenY: Double
+    public var width: Double
+    public var height: Double
+    public var radius: Double
+    public var hidden: UInt32
+    public var parentWindowNumber: UInt32
+    public var sequence: UInt32
+
+    public init(screenX: Double = 0, screenY: Double = 0, width: Double = 0, height: Double = 0, radius: Double = 38, hidden: UInt32 = 0, parentWindowNumber: UInt32 = 0, sequence: UInt32 = 0) {
+        self.screenX = screenX
+        self.screenY = screenY
+        self.width = width
+        self.height = height
+        self.radius = radius
+        self.hidden = hidden
+        self.parentWindowNumber = parentWindowNumber
+        self.sequence = sequence
+    }
+}
+
 public struct AdbDeviceItem: Identifiable, Hashable {
     public var id: String { serial }
     public let serial: String
@@ -81,7 +103,7 @@ public final class AppState: ObservableObject {
     @Published public var isQrPairing: Bool = false
     @Published public var qrPairingStatus: String = "Menunggu pindaian..."
     // Saat popover terbuka, layar HP disembunyikan sementara agar tidak menutupi popover
-    @Published public var overlayOpen = false { didSet { writeHostRect() } }
+    @Published public var overlayOpen = false { didSet { writeLiveGeometry() } }
 
     // Konfigurasi lanjutan (tetap kompatibel dengan config.conf milik CLI)
     private var adbPath = "/opt/homebrew/bin/adb"
@@ -93,6 +115,11 @@ public final class AppState: ObservableObject {
     // Geometri layar HP di dalam jendela (koordinat window, origin kiri bawah)
     private var hostRect = NSRect(x: 76, y: 92, width: 288, height: 640)
     private var hostRadius: CGFloat = 38
+    private var currentWindowFrame: NSRect = .zero
+    private var currentWindowNumber: UInt32 = 0
+    private var liveGeomPtr: UnsafeMutablePointer<UACLiveGeometry>?
+    private var liveGeomFd: Int32 = -1
+    private let liveGeomPath = ("~/.universal-adb-control/live_geometry.bin" as NSString).expandingTildeInPath
 
     private var displayProcess: Process?
     private var displayOutputPipe: Pipe?
@@ -110,6 +137,7 @@ public final class AppState: ObservableObject {
     }
 
     public init() {
+        initLiveGeometry()
         loadConfig()
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
@@ -121,6 +149,12 @@ public final class AppState: ObservableObject {
         timer?.invalidate()
         latencyTimer?.invalidate()
         displayOutputPipe?.fileHandleForReading.readabilityHandler = nil
+        if let ptr = liveGeomPtr {
+            munmap(ptr, MemoryLayout<UACLiveGeometry>.stride)
+        }
+        if liveGeomFd >= 0 {
+            close(liveGeomFd)
+        }
     }
 
     // MARK: - Konfigurasi
@@ -222,11 +256,58 @@ public final class AppState: ObservableObject {
 
     // MARK: - Geometri layar terintegrasi
 
+    private func initLiveGeometry() {
+        let dir = ("~/.universal-adb-control" as NSString).expandingTildeInPath
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        liveGeomFd = open(liveGeomPath, O_CREAT | O_RDWR, 0o666)
+        if liveGeomFd >= 0 {
+            let size = MemoryLayout<UACLiveGeometry>.stride
+            ftruncate(liveGeomFd, off_t(size))
+            let m = mmap(nil, size, PROT_READ | PROT_WRITE, MAP_SHARED, liveGeomFd, 0)
+            if m != MAP_FAILED, let ptr = m?.assumingMemoryBound(to: UACLiveGeometry.self) {
+                liveGeomPtr = ptr
+            }
+        }
+        writeLiveGeometry()
+    }
+
     public func updateHostGeometry(rect: NSRect, radius: CGFloat) {
         guard rect.width > 50, rect.height > 50 else { return }
         if rect.integral == hostRect.integral && abs(radius - hostRadius) < 0.5 { return }
         hostRect = rect
         hostRadius = radius
+        writeLiveGeometry()
+    }
+
+    public func updateWindowFrame(_ frame: NSRect, windowNumber: UInt32) {
+        currentWindowFrame = frame
+        currentWindowNumber = windowNumber
+        writeLiveGeometry()
+    }
+
+    public func setWindowHidden(_ hidden: Bool) {
+        if overlayOpen != hidden {
+            overlayOpen = hidden
+        } else {
+            writeLiveGeometry()
+        }
+    }
+
+    public func writeLiveGeometry() {
+        let screenX = currentWindowFrame.origin.x + hostRect.origin.x
+        let screenY = currentWindowFrame.origin.y + hostRect.origin.y
+        let isHidden = overlayOpen || hostRect.width <= 50 || hostRect.height <= 50
+
+        if let ptr = liveGeomPtr {
+            ptr.pointee.screenX = Double(screenX)
+            ptr.pointee.screenY = Double(screenY)
+            ptr.pointee.width = Double(hostRect.width)
+            ptr.pointee.height = Double(hostRect.height)
+            ptr.pointee.radius = Double(hostRadius)
+            ptr.pointee.hidden = isHidden ? 1 : 0
+            ptr.pointee.parentWindowNumber = currentWindowNumber
+            ptr.pointee.sequence &+= 1
+        }
         writeHostRect()
     }
 

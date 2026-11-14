@@ -6,6 +6,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let appState = AppState()
     var statusItem: NSStatusItem?
 
+    private var dragTimer: Timer?
+    private var startWindowFrame: NSRect = .zero
+    private var startMouseLocation: NSPoint = .zero
+    private var isDraggingWindow: Bool = false
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMainMenu()
         setupMenuBar()
@@ -47,6 +52,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
         self.window = window
+        appState.updateWindowFrame(window.frame, windowNumber: UInt32(window.windowNumber))
 
         // Otomatis nyalakan layar saat GUI dibuka
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
@@ -136,6 +142,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if win.isMiniaturized { win.deminiaturize(nil) }
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        appState.setWindowHidden(false)
+        appState.updateWindowFrame(win.frame, windowNumber: UInt32(win.windowNumber))
     }
 
     @objc func toggleControl() {
@@ -147,6 +155,71 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/pkill"), arguments: ["-f", "UniversalADBControlDisplay"])
         NSApplication.shared.terminate(nil)
         exit(0)
+    }
+
+    // MARK: - NSWindowDelegate (Sinkronisasi posisi & live dragging)
+
+    func windowWillMove(_ notification: Notification) {
+        guard let win = self.window else { return }
+        startWindowFrame = win.frame
+        startMouseLocation = NSEvent.mouseLocation
+        isDraggingWindow = true
+
+        dragTimer?.invalidate()
+        let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
+            self?.handleLiveDrag()
+        }
+        dragTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        stopDragTracking()
+        if let win = self.window {
+            appState.updateWindowFrame(win.frame, windowNumber: UInt32(win.windowNumber))
+        }
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        if let win = self.window {
+            appState.updateWindowFrame(win.frame, windowNumber: UInt32(win.windowNumber))
+        }
+    }
+
+    func windowDidMiniaturize(_ notification: Notification) {
+        appState.setWindowHidden(true)
+    }
+
+    func windowDidDeminiaturize(_ notification: Notification) {
+        appState.setWindowHidden(false)
+        if let win = self.window {
+            appState.updateWindowFrame(win.frame, windowNumber: UInt32(win.windowNumber))
+        }
+    }
+
+    private func handleLiveDrag() {
+        guard let win = self.window, isDraggingWindow else { return }
+        if (NSEvent.pressedMouseButtons & 1) == 0 {
+            stopDragTracking()
+            appState.updateWindowFrame(win.frame, windowNumber: UInt32(win.windowNumber))
+            return
+        }
+        let currentMouse = NSEvent.mouseLocation
+        let deltaX = currentMouse.x - startMouseLocation.x
+        let deltaY = currentMouse.y - startMouseLocation.y
+        let liveFrame = NSRect(
+            x: startWindowFrame.origin.x + deltaX,
+            y: startWindowFrame.origin.y + deltaY,
+            width: startWindowFrame.width,
+            height: startWindowFrame.height
+        )
+        appState.updateWindowFrame(liveFrame, windowNumber: UInt32(win.windowNumber))
+    }
+
+    private func stopDragTracking() {
+        isDraggingWindow = false
+        dragTimer?.invalidate()
+        dragTimer = nil
     }
 
     func windowWillClose(_ notification: Notification) {

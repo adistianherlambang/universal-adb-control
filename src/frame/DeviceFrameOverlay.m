@@ -84,7 +84,36 @@ static pid_t gParentPid = 0;
 static BOOL gIsEmbedded = NO;
 static NSTimer *gSyncTimer = nil;
 
-// Geometri area layar di jendela GUI (dibaca dari host_rect.json)
+// Struktur sinkronisasi geometri real-time (shared memory mmap)
+typedef struct {
+    double screenX;
+    double screenY;
+    double width;
+    double height;
+    double radius;
+    uint32_t hidden;
+    uint32_t parentWindowNumber;
+    uint32_t sequence;
+} UACLiveGeometry;
+
+static UACLiveGeometry *gLiveGeom = NULL;
+static int gLiveGeomFd = -1;
+
+static void initLiveGeometryMapping(void) {
+    if (gLiveGeom) return;
+    static NSString *path = nil;
+    if (!path) path = [@"~/.universal-adb-control/live_geometry.bin" stringByExpandingTildeInPath];
+    if (access(path.fileSystemRepresentation, R_OK) != 0) return;
+    gLiveGeomFd = open(path.fileSystemRepresentation, O_RDONLY);
+    if (gLiveGeomFd >= 0) {
+        void *p = mmap(NULL, sizeof(UACLiveGeometry), PROT_READ, MAP_SHARED, gLiveGeomFd, 0);
+        if (p != MAP_FAILED) {
+            gLiveGeom = (UACLiveGeometry *)p;
+        }
+    }
+}
+
+// Geometri area layar di jendela GUI (dibaca dari host_rect.json sebagai fallback)
 static CGFloat gOffsetX = 76.0;
 static CGFloat gOffsetY = 92.0;
 static CGFloat gWidth = 288.0;
@@ -159,28 +188,56 @@ static void syncEmbeddedWindow(NSWindow *window) {
     if (kill(gParentPid, 0) != 0) {
         [gSyncTimer invalidate];
         gSyncTimer = nil;
+        if (gLiveGeom) { munmap(gLiveGeom, sizeof(UACLiveGeometry)); gLiveGeom = NULL; }
+        if (gLiveGeomFd >= 0) { close(gLiveGeomFd); gLiveGeomFd = -1; }
         [NSApp terminate:nil];
         exit(0);
         return;
     }
 
-    refreshHostRect();
-    UACParentInfo parent = queryParent((CGWindowID)window.windowNumber);
-    BOOL visible = parent.found && !gHostHidden;
+    initLiveGeometryMapping();
 
-    if (visible) {
-        NSScreen *primary = [NSScreen screens].firstObject;
-        CGFloat screenH = primary ? primary.frame.size.height : 1080.0;
-        // Koordinat CG (kiri atas) -> Cocoa (kiri bawah)
-        CGFloat parentX = parent.bounds.origin.x;
-        CGFloat parentY = screenH - (parent.bounds.origin.y + parent.bounds.size.height);
-        NSRect target = NSMakeRect(round(parentX + gOffsetX), round(parentY + gOffsetY), round(gWidth), round(gHeight));
+    BOOL visible = NO;
+    NSRect target = NSZeroRect;
+    CGFloat cornerRadius = gRadius;
+    CGWindowID parentWindowID = 0;
+
+    // Prioritas 1: Baca langsung koordinat layar live dari shared memory (kecepatan hardware bus / zero latency)
+    if (gLiveGeom && gLiveGeom->width >= 50 && gLiveGeom->height >= 50) {
+        visible = (gLiveGeom->hidden == 0);
+        target = NSMakeRect(round(gLiveGeom->screenX),
+                            round(gLiveGeom->screenY),
+                            round(gLiveGeom->width),
+                            round(gLiveGeom->height));
+        cornerRadius = gLiveGeom->radius;
+        parentWindowID = (CGWindowID)gLiveGeom->parentWindowNumber;
+    } else {
+        // Fallback: baca dari host_rect.json & queryParent jika live_geometry belum aktif
+        refreshHostRect();
+        UACParentInfo parent = queryParent((CGWindowID)window.windowNumber);
+        visible = parent.found && !gHostHidden;
+        if (visible) {
+            NSScreen *primary = [NSScreen screens].firstObject;
+            CGFloat screenH = primary ? primary.frame.size.height : 1080.0;
+            CGFloat parentX = parent.bounds.origin.x;
+            CGFloat parentY = screenH - (parent.bounds.origin.y + parent.bounds.size.height);
+            target = NSMakeRect(round(parentX + gOffsetX), round(parentY + gOffsetY), round(gWidth), round(gHeight));
+            cornerRadius = gRadius;
+            parentWindowID = parent.number;
+        }
+    }
+
+    if (visible && target.size.width > 50 && target.size.height > 50) {
         if (!NSEqualRects(window.frame, target)) {
-            [window setFrame:target display:YES animate:NO];
+            // Jika hanya posisi yang bergeser (saat window di-drag), gunakan setFrameOrigin (jauh lebih instan)
+            if (NSEqualSizes(window.frame.size, target.size)) {
+                [window setFrameOrigin:target.origin];
+            } else {
+                [window setFrame:target display:YES animate:NO];
+            }
             NSView *content = window.contentView;
-            if (content) {
-                content.layer.cornerRadius = gRadius;
-                [content setNeedsDisplay:YES];
+            if (content && fabs(content.layer.cornerRadius - cornerRadius) > 0.5) {
+                content.layer.cornerRadius = cornerRadius;
             }
         }
 
@@ -189,8 +246,8 @@ static void syncEmbeddedWindow(NSWindow *window) {
         BOOL ours = (front == gParentPid || front == getpid());
         NSWindowLevel level = ours ? NSFloatingWindowLevel : NSNormalWindowLevel;
         if (window.level != level) window.level = level;
-        if (!ours && !parent.directlyAbove) {
-            [window orderWindow:NSWindowAbove relativeTo:(NSInteger)parent.number];
+        if (!ours && parentWindowID > 0) {
+            [window orderWindow:NSWindowAbove relativeTo:(NSInteger)parentWindowID];
         }
     }
 
@@ -221,11 +278,12 @@ static void applyEmbeddedMode(NSWindow *window) {
 
     if (!gSyncTimer) {
         __weak NSWindow *weakWindow = window;
-        gSyncTimer = [NSTimer timerWithTimeInterval:1.0 / 60.0 repeats:YES block:^(NSTimer *timer) {
+        // 120Hz update loop untuk ProMotion display dan fluid window dragging
+        gSyncTimer = [NSTimer timerWithTimeInterval:1.0 / 120.0 repeats:YES block:^(NSTimer *timer) {
             NSWindow *w = weakWindow;
             if (w) syncEmbeddedWindow(w);
         }];
-        // Tetap berjalan saat GUI sedang di-resize / di-drag
+        // Tetap berjalan mulus saat GUI sedang di-resize atau di-drag
         [[NSRunLoop mainRunLoop] addTimer:gSyncTimer forMode:NSRunLoopCommonModes];
     }
 }
