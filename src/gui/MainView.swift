@@ -40,8 +40,7 @@ struct MainView: View {
                         Image(nsImage: logo)
                             .resizable()
                             .scaledToFit()
-                            .frame(width: 14, height: 14)
-                            .clipShape(Circle())
+                            .frame(width: 16, height: 16)
                     }
                     Text(state.activeDevice?.displayName ?? "Tidak ada perangkat")
                         .font(.system(size: 13, weight: .semibold))
@@ -307,20 +306,10 @@ private struct PhoneView: View {
         } else {
             VStack(spacing: 16) {
                 if let logo = loadBrandLogo() {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(Color.white.opacity(0.10))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .stroke(Color.white.opacity(0.20), lineWidth: 1)
-                            )
-                            .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
-                        Image(nsImage: logo)
-                            .resizable()
-                            .scaledToFit()
-                            .padding(12)
-                    }
-                    .frame(width: 72, height: 72)
+                    Image(nsImage: logo)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 120, height: 120)
                 }
 
                 VStack(spacing: 4) {
@@ -329,8 +318,8 @@ private struct PhoneView: View {
                         .foregroundStyle(.white)
 
                     Text("Hubungkan perangkat untuk memulai")
-                        .font(.system(size: 10.5, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.6))
                 }
 
                 Button(action: onConnect) {
@@ -341,7 +330,7 @@ private struct PhoneView: View {
                             .font(.system(size: 12, weight: .medium))
                     }
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, 16)
                     .frame(height: 32)
                     .contentShape(Capsule())
                 }
@@ -355,13 +344,18 @@ private struct PhoneView: View {
 
 private func loadBrandLogo() -> NSImage? {
     if let img = NSImage(named: "adbLogo") { return img }
+    if let path = Bundle.main.path(forResource: "adbLogo", ofType: "jpg"), let img = NSImage(contentsOfFile: path) {
+        return img
+    }
     if let path = Bundle.main.path(forResource: "adbLogo", ofType: "png"), let img = NSImage(contentsOfFile: path) {
         return img
     }
-    let localPath = ("assets/adbLogo.png" as NSString).expandingTildeInPath
-    if let img = NSImage(contentsOfFile: localPath) { return img }
-    let rootPath = ("adbLogo.jpg" as NSString).expandingTildeInPath
-    if let img = NSImage(contentsOfFile: rootPath) { return img }
+    let localJpg = ("adbLogo.jpg" as NSString).expandingTildeInPath
+    if let img = NSImage(contentsOfFile: localJpg) { return img }
+    let assetJpg = ("assets/adbLogo.jpg" as NSString).expandingTildeInPath
+    if let img = NSImage(contentsOfFile: assetJpg) { return img }
+    let assetPng = ("assets/adbLogo.png" as NSString).expandingTildeInPath
+    if let img = NSImage(contentsOfFile: assetPng) { return img }
     return nil
 }
 

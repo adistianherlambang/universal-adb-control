@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/adbLogo.png" alt="Universal ADB Control Logo" width="128" height="128" />
+  <img src="adbLogo.jpg" alt="Universal ADB Control Logo" width="121" height="121" />
   <h1>Universal ADB Control</h1>
   <p><strong>Aplikasi kontrol nirkabel & kabel untuk mengendalikan HP Android dari Mac secara universal</strong></p>
   <p><em>Seamless Mouse, Keyboard, Layar Terintegrasi & Sinkronisasi Clipboard 2-Arah Berkecepatan Tinggi</em></p>
@@ -44,9 +44,9 @@ Setiap berkas dalam arsitektur Universal ADB Control dirancang dengan tanggung j
 
 ```text
 universal-adb-control/
-├── assets/                             # Branding resmi (logo visual, icon macOS, & banner)
+├── assets/                             # Branding resmi (logo visual & icon macOS)
 │   ├── adbLogo.jpg                     # Logo asli ADB Android
-│   ├── adbLogo.png                     # Logo sRGB untuk web & tampilan in-app
+│   ├── adbLogo.png                     # Logo format PNG untuk kompatibilitas
 │   └── AppIcon.icns                    # macOS Application Iconset (16px - 1024px)
 ├── bin/                                # Biner hasil kompilasi & macOS App Bundle (gitignored)
 ├── src/

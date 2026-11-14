@@ -52,6 +52,9 @@ EOF
 if [ -f "assets/AppIcon.icns" ]; then
     cp assets/AppIcon.icns "${RESOURCES_DIR}/AppIcon.icns"
 fi
+if [ -f "adbLogo.jpg" ]; then
+    cp adbLogo.jpg "${RESOURCES_DIR}/adbLogo.jpg"
+fi
 if [ -f "assets/adbLogo.png" ]; then
     cp assets/adbLogo.png "${RESOURCES_DIR}/adbLogo.png"
 fi
