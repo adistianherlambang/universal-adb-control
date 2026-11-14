@@ -73,7 +73,22 @@ public final class AdbTransport {
         }
     }
 
-    private func autoConnectMdnsIfPossible() {
+    private func loadIgnoredDevices() -> Set<String> {
+        let path = ("~/.universal-adb-control/ignored_devices.txt" as NSString).expandingTildeInPath
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { return [] }
+        let entries = content.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        return Set(entries)
+    }
+
+    private func isIgnored(_ serial: String, ignored: Set<String>) -> Bool {
+        if ignored.contains(serial) { return true }
+        if serial.contains(":"), let host = serial.split(separator: ":").first.map(String.init) {
+            if ignored.contains(host) { return true }
+        }
+        return false
+    }
+
+    private func autoConnectMdnsIfPossible(ignored: Set<String>) {
         let task = Process()
         task.launchPath = config.adbPath
         task.arguments = ["mdns", "services"]
@@ -88,9 +103,13 @@ public final class AdbTransport {
         for line in output.components(separatedBy: .newlines) {
             let cols = line.split(whereSeparator: { $0.isWhitespace })
             if cols.count >= 3 {
+                let svcName = String(cols[0])
                 let svc = String(cols[1])
                 let addr = String(cols[2])
                 if svc.contains("_adb-tls-connect") && addr.contains(":") {
+                    if isIgnored(addr, ignored: ignored) || ignored.contains(where: { $0.contains(svcName) }) {
+                        continue
+                    }
                     let connTask = Process()
                     connTask.launchPath = self.config.adbPath
                     connTask.arguments = ["connect", addr]
@@ -103,10 +122,11 @@ public final class AdbTransport {
     }
 
     public func selectTargetDevice() -> String? {
-        var devices = discoverDevices().filter { $0.state == "device" }
+        let ignored = loadIgnoredDevices()
+        var devices = discoverDevices().filter { $0.state == "device" && !isIgnored($0.serial, ignored: ignored) }
         if devices.isEmpty {
-            autoConnectMdnsIfPossible()
-            devices = discoverDevices().filter { $0.state == "device" }
+            autoConnectMdnsIfPossible(ignored: ignored)
+            devices = discoverDevices().filter { $0.state == "device" && !isIgnored($0.serial, ignored: ignored) }
         }
         if devices.isEmpty { return nil }
 

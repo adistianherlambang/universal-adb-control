@@ -131,7 +131,9 @@ public final class AppState: ObservableObject {
     private let worker = DispatchQueue(label: "uac.worker", qos: .userInitiated)
     private let confPath = ("~/.universal-adb-control/config.conf" as NSString).expandingTildeInPath
     private let hostRectPath = ("~/.universal-adb-control/host_rect.json" as NSString).expandingTildeInPath
+    private let ignoredPath = ("~/.universal-adb-control/ignored_devices.txt" as NSString).expandingTildeInPath
     private let helperBin = ("~/.universal-adb-control/helpers/UniversalADBControlDisplay.app/Contents/MacOS/UniversalADBControlDisplay" as NSString).expandingTildeInPath
+    private var ignoredSerials: Set<String> = []
 
     public var activeDevice: AdbDeviceItem? {
         devices.first { $0.serial == selectedSerial && $0.isReady } ?? devices.first { $0.isReady }
@@ -140,6 +142,7 @@ public final class AppState: ObservableObject {
     public init() {
         initLiveGeometry()
         loadConfig()
+        loadIgnoredDevices()
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.refresh()
@@ -250,6 +253,7 @@ public final class AppState: ObservableObject {
                 }
             }
             let isWifi = serial.contains(":") || serial.contains("._tcp") || serial.hasPrefix("adb-")
+            if isWifi && isIgnored(serial) { continue }
             items.append(AdbDeviceItem(serial: serial, state: state, model: model, isWifi: isWifi))
         }
         return items
@@ -739,12 +743,58 @@ public final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Daftar perangkat yang diputuskan (anti auto-reconnect mDNS)
+
+    private func loadIgnoredDevices() {
+        guard let content = try? String(contentsOfFile: ignoredPath, encoding: .utf8) else { return }
+        let entries = content.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        ignoredSerials = Set(entries)
+    }
+
+    private func saveIgnoredDevices() {
+        let dir = (ignoredPath as NSString).deletingLastPathComponent
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let text = ignoredSerials.sorted().joined(separator: "\n")
+        try? text.write(toFile: ignoredPath, atomically: true, encoding: .utf8)
+    }
+
+    private func isIgnored(_ serial: String) -> Bool {
+        if ignoredSerials.contains(serial) { return true }
+        if serial.contains(":"), let host = serial.split(separator: ":").first.map(String.init) {
+            if ignoredSerials.contains(host) { return true }
+        }
+        return false
+    }
+
+    private func addIgnored(_ serial: String) {
+        ignoredSerials.insert(serial)
+        if serial.contains(":"), let host = serial.split(separator: ":").first.map(String.init), !host.isEmpty {
+            ignoredSerials.insert(host)
+        }
+        if let cached = resolvedTargetCache[serial] {
+            ignoredSerials.insert(cached.host)
+            if let port = cached.port {
+                ignoredSerials.insert("\(cached.host):\(port)")
+            }
+        }
+        saveIgnoredDevices()
+    }
+
+    private func clearIgnored(matching identifier: String) {
+        let host = identifier.split(separator: ":").first.map(String.init) ?? identifier
+        ignoredSerials = ignoredSerials.filter { entry in
+            entry != identifier && entry != host && !entry.hasPrefix("\(host):")
+        }
+        saveIgnoredDevices()
+    }
+
     // MARK: - Wi-Fi & Pairing
 
     public func connectWifi(_ address: String) {
         let addr = address.trimmingCharacters(in: .whitespaces)
         guard !addr.isEmpty else { return }
         let target = addr.contains(":") ? addr : "\(addr):5555"
+        clearIgnored(matching: target)
         let adb = adbPath
         worker.async { [weak self] in
             guard let self = self else { return }
@@ -764,6 +814,7 @@ public final class AppState: ObservableObject {
         let pairAddr = pairingAddress.trimmingCharacters(in: .whitespaces)
         let pin = code.trimmingCharacters(in: .whitespaces)
         guard !pairAddr.isEmpty, !pin.isEmpty else { return }
+        clearIgnored(matching: pairAddr)
         let adb = adbPath
         worker.async { [weak self] in
             guard let self = self else { return }
@@ -856,6 +907,8 @@ public final class AppState: ObservableObject {
                         _ = self.runShell("\(adb) connect \(targetConnect)")
 
                         DispatchQueue.main.async {
+                            self.ignoredSerials.removeAll()
+                            self.saveIgnoredDevices()
                             self.isQrPairing = false
                             self.qrPairingStatus = "Terhubung!"
                             self.showToast("Berhasil terhubung via QR Code")
@@ -903,6 +956,7 @@ public final class AppState: ObservableObject {
             DispatchQueue.main.async {
                 if res.contains("restarting in TCP mode") {
                     if !ip.isEmpty {
+                        self.clearIgnored(matching: "\(ip):5555")
                         self.showToast("Mode Wi-Fi aktif. Menghubungkan ke \(ip):5555...")
                         self.worker.async {
                             Thread.sleep(forTimeInterval: 1.0)
@@ -932,6 +986,7 @@ public final class AppState: ObservableObject {
         }
 
         if isWifi {
+            addIgnored(serial)
             withAnimation(.smooth(duration: 0.25)) {
                 devices.removeAll { $0.serial == serial }
                 if selectedSerial == serial {
@@ -944,9 +999,23 @@ public final class AppState: ObservableObject {
             let adb = adbPath
             worker.async { [weak self] in
                 guard let self = self else { return }
+                let resolved = self.resolveTarget(serial: serial)
                 _ = self.runShell("\(adb) disconnect \"\(serial)\"")
-                if let host = serial.split(separator: ":").first, !host.isEmpty, !host.contains(" ") {
+                if let host = serial.split(separator: ":").first, !host.isEmpty, !host.contains(" "), serial.contains(":") {
                     _ = self.runShell("\(adb) disconnect \(host)")
+                }
+                if let res = resolved {
+                    if let port = res.port {
+                        _ = self.runShell("\(adb) disconnect \(res.host):\(port)")
+                    }
+                    _ = self.runShell("\(adb) disconnect \(res.host)")
+                    DispatchQueue.main.async {
+                        self.ignoredSerials.insert(res.host)
+                        if let port = res.port {
+                            self.ignoredSerials.insert("\(res.host):\(port)")
+                        }
+                        self.saveIgnoredDevices()
+                    }
                 }
                 DispatchQueue.main.async {
                     self.refresh()
