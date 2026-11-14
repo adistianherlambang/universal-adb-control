@@ -22,6 +22,7 @@ Aplikasi kontrol nirkabel & kabel untuk mengendalikan HP Android dari Mac secara
   - HUD performa Liquid Glass di bar atas yang menampilkan framerate aktual (FPS) dan latensi transmisi jaringan (ms) secara real-time.
   - Pengukuran latensi native via TCP handshake / ICMP ping tanpa memberatkan thread utama.
   - Indikator visual status koneksi (hijau, kuning, oranye, merah) yang adaptif dan informatif.
+- **Pairing Nirkabel via QR Code (Android 11+)**: Pindai QR Code langsung dari menu *Opsi Pengembang > Proses debug nirkabel > Pasangkan dengan kode QR* di ponsel Android untuk otentikasi TLS dan koneksi otomatis tanpa repot mengetik alamat IP atau port manual.
 - **Device Management**: Deteksi otomatis perangkat ADB USB & Wi-Fi dengan fitur *one-click connect/disconnect*.
 - **Background Daemon & CLI**: Berjalan stabil di latar belakang via macOS LaunchAgent (`com.universal.adb.control.daemon`).
 
@@ -49,6 +50,8 @@ universal-adb-control/
 │   ├── gui/
 │   │   ├── main.swift                  # Entry point AppKit, Menu Utama sistem, & jendela kaca
 │   │   ├── AppState.swift              # ObservableObject state manager & peluncur display SDK
+│   │   ├── QRCodeHelper.swift          # Generator QR code native CoreImage (CIQRCodeGenerator)
+│   │   ├── LiquidGlass.swift           # Shader & ViewModifier material kaca Liquid Glass
 │   │   └── MainView.swift              # Antarmuka Liquid Glass SwiftUI & mockup smartphone
 │   └── helper/
 │       └── UniversalADBControlDisplay.c# Launcher C mandiri pembungkus scrcpy dengan dylib
@@ -93,6 +96,7 @@ universal-adb-control/
   - Menghitung koordinat piksel area layar ponsel dan menyimpannya ke `~/.universal-adb-control/host_rect.json`.
   - Meluncurkan helper display scrcpy dengan parameter koordinat mutlak (`--keyboard=sdk --mouse=sdk`) untuk sinkronisasi kursor 1:1 dan gestur trackpad mulus.
   - Mengirim tombol fisik Android (Volume Up/Down, Power, Back, Home, Recents) via ADB keyevent.
+- **`src/gui/QRCodeHelper.swift`**: Utilitas generator gambar QR Code native menggunakan `CoreImage` (`CIQRCodeGenerator`) dan rasterisasi CGImage resolusi tajam (pixel-crisp) untuk payload pairing standar Android Wireless Debugging (`WIFI:T:ADB;S:...;P:...;;`).
 - **`src/gui/LiquidGlass.swift`**: Konfigurasi parameter dan render shader Liquid Glass:
   - Menyediakan `GlassConfig` (`refraction`, `depth`, `frost`, `dispersion`, `splay` skala 0-100) yang dapat diatur pengguna secara langsung.
   - Komponen latar kaca `LiquidGlassBackground` dan ViewModifier `.liquidGlass(...)` untuk seluruh elemen UI.

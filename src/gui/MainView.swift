@@ -335,6 +335,7 @@ private struct SideKey: View {
 // MARK: - Popover perangkat
 
 private enum ConnectionMode: String, CaseIterable, Identifiable {
+    case qr = "QR Code"
     case direct = "IP"
     case pair = "Kode"
 
@@ -345,11 +346,13 @@ private struct DevicePopover: View {
     @ObservedObject var state: AppState
     @Binding var isPresented: Bool
 
-    @State private var mode: ConnectionMode = .direct
+    @State private var mode: ConnectionMode = .qr
     @State private var directAddress = ""
     @State private var pairAddress = ""
     @State private var pairCode = ""
     @State private var isAddingDevice = false
+    @State private var qrImage: NSImage?
+    @State private var currentCode = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -411,7 +414,29 @@ private struct DevicePopover: View {
             }
         }
         .padding(12)
-        .frame(width: 260)
+        .frame(width: 270)
+        .onAppear {
+            if mode == .qr && (isAddingDevice || state.devices.isEmpty) {
+                regenerateQR()
+            }
+        }
+        .onDisappear {
+            state.stopQRPairing()
+        }
+        .onChange(of: mode) { _, newMode in
+            if newMode == .qr && (isAddingDevice || state.devices.isEmpty) {
+                regenerateQR()
+            } else {
+                state.stopQRPairing()
+            }
+        }
+        .onChange(of: isAddingDevice) { _, adding in
+            if adding && mode == .qr {
+                regenerateQR()
+            } else if !adding {
+                state.stopQRPairing()
+            }
+        }
     }
 
     private var connectionSection: some View {
@@ -424,7 +449,9 @@ private struct DevicePopover: View {
             .pickerStyle(.segmented)
             .labelsHidden()
 
-            if mode == .direct {
+            if mode == .qr {
+                qrSection
+            } else if mode == .direct {
                 HStack(spacing: 8) {
                     TextField("Alamat IP", text: $directAddress)
                         .textFieldStyle(.plain)
@@ -471,6 +498,79 @@ private struct DevicePopover: View {
                     .buttonStyle(.interactiveGlass)
                     .liquidGlass(in: Circle(), interactive: true, tint: .accentColor)
                     .disabled(pairAddress.trimmingCharacters(in: .whitespaces).isEmpty || pairCode.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+    }
+
+    private var qrSection: some View {
+        VStack(spacing: 9) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white)
+                    .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+
+                if let img = qrImage {
+                    Image(nsImage: img)
+                        .interpolation(.none)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(8)
+                } else {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+            }
+            .frame(width: 148, height: 148)
+
+            VStack(spacing: 3) {
+                HStack(spacing: 6) {
+                    if state.isQrPairing {
+                        ProgressView()
+                            .scaleEffect(0.55)
+                            .frame(width: 12, height: 12)
+                    } else {
+                        Circle()
+                            .fill(Color.secondary.opacity(0.5))
+                            .frame(width: 6, height: 6)
+                    }
+
+                    Text(state.qrPairingStatus)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    Button(action: regenerateQR) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Buat kode baru")
+                }
+
+                Text("Opsi Pengembang > Debug Nirkabel > Pindai QR")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top, 1)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
+    }
+
+    private func regenerateQR() {
+        let randHex = String(format: "%04x%04x", arc4random() % 65536, arc4random() % 65536)
+        let sName = "uac-\(randHex)"
+        let code = String(format: "%06d", arc4random() % 900000 + 100000)
+        currentCode = code
+        let payload = "WIFI:T:ADB;S:\(sName);P:\(code);;"
+        qrImage = QRCodeHelper.generate(from: payload, size: 280)
+        state.startQRPairing(serviceName: sName, code: code) { success in
+            if success {
+                withAnimation(.smooth(duration: 0.25)) {
+                    isAddingDevice = false
                 }
             }
         }
@@ -537,12 +637,14 @@ private struct DevicePopover: View {
     }
 
     private func submitPair() {
+        state.stopQRPairing()
         state.pairAndConnect(pairingAddress: pairAddress, code: pairCode)
         pairCode = ""
         isAddingDevice = false
     }
 
     private func submitDirect() {
+        state.stopQRPairing()
         state.connectWifi(directAddress)
         directAddress = ""
         isAddingDevice = false

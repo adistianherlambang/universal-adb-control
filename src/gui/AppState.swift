@@ -78,6 +78,8 @@ public final class AppState: ObservableObject {
     @Published public var screenAspectRatio: CGFloat = 9.0 / 20.0
     @Published public var currentFps: Int = 60
     @Published public var currentLatencyMs: Int = 0
+    @Published public var isQrPairing: Bool = false
+    @Published public var qrPairingStatus: String = "Menunggu pindaian..."
     // Saat popover terbuka, layar HP disembunyikan sementara agar tidak menutupi popover
     @Published public var overlayOpen = false { didSet { writeHostRect() } }
 
@@ -96,6 +98,7 @@ public final class AppState: ObservableObject {
     private var displayOutputPipe: Pipe?
     private var latencyTimer: Timer?
     private var toastWork: DispatchWorkItem?
+    private var qrPairingWorkItem: DispatchWorkItem?
     private var timer: Timer?
     private let worker = DispatchQueue(label: "uac.worker", qos: .userInitiated)
     private let confPath = ("~/.universal-adb-control/config.conf" as NSString).expandingTildeInPath
@@ -642,6 +645,109 @@ public final class AppState: ObservableObject {
                     self.refresh()
                 }
             }
+        }
+    }
+
+    // MARK: - Wireless Debugging QR Code Pairing
+
+    public func startQRPairing(serviceName: String, code: String, completion: @escaping (Bool) -> Void) {
+        stopQRPairing()
+        isQrPairing = true
+        qrPairingStatus = "Menunggu pindaian..."
+
+        let adb = adbPath
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            let maxSeconds = 60
+            var paired = false
+
+            for _ in 0..<maxSeconds {
+                if Thread.current.isCancelled || !self.isQrPairing { break }
+
+                let output = self.runShell("\(adb) mdns services")
+                var candidateEndpoint: String? = nil
+
+                for line in output.components(separatedBy: .newlines) {
+                    let parts = line.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+                    if parts.count >= 3 && parts[1].contains("_adb-tls-pairing") {
+                        let inst = parts[0]
+                        let endpoint = parts[2]
+                        if inst.contains(serviceName) {
+                            candidateEndpoint = endpoint
+                            break
+                        } else if candidateEndpoint == nil {
+                            candidateEndpoint = endpoint
+                        }
+                    }
+                }
+
+                if let endpoint = candidateEndpoint {
+                    DispatchQueue.main.async {
+                        self.qrPairingStatus = "Memasangkan perangkat..."
+                    }
+
+                    let pairOutput = self.runShell("\(adb) pair \(endpoint) \(code)")
+                    if pairOutput.contains("Successfully paired to") {
+                        paired = true
+                        DispatchQueue.main.async {
+                            self.qrPairingStatus = "Berhasil dipasangkan! Menghubungkan..."
+                        }
+                        Thread.sleep(forTimeInterval: 0.8)
+
+                        // Cari endpoint koneksi dari mDNS connect service
+                        let connOutput = self.runShell("\(adb) mdns services")
+                        var connectEndpoint: String? = nil
+                        let hostIp = endpoint.split(separator: ":").first.map(String.init) ?? ""
+
+                        for line in connOutput.components(separatedBy: .newlines) {
+                            let parts = line.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+                            if parts.count >= 3 && parts[1].contains("_adb-tls-connect") {
+                                let ep = parts[2]
+                                if !hostIp.isEmpty && ep.hasPrefix(hostIp) {
+                                    connectEndpoint = ep
+                                    break
+                                } else if connectEndpoint == nil {
+                                    connectEndpoint = ep
+                                }
+                            }
+                        }
+
+                        let targetConnect = connectEndpoint ?? endpoint
+                        _ = self.runShell("\(adb) connect \(targetConnect)")
+
+                        DispatchQueue.main.async {
+                            self.isQrPairing = false
+                            self.qrPairingStatus = "Terhubung!"
+                            self.showToast("Berhasil terhubung via QR Code")
+                            self.selectDevice(targetConnect)
+                            self.refresh()
+                            completion(true)
+                        }
+                        return
+                    }
+                }
+
+                Thread.sleep(forTimeInterval: 1.0)
+            }
+
+            DispatchQueue.main.async {
+                if self.isQrPairing && !paired {
+                    self.isQrPairing = false
+                    self.qrPairingStatus = "Waktu habis, ketuk untuk perbarui"
+                    completion(false)
+                }
+            }
+        }
+
+        qrPairingWorkItem = work
+        worker.async(execute: work)
+    }
+
+    public func stopQRPairing() {
+        qrPairingWorkItem?.cancel()
+        qrPairingWorkItem = nil
+        if isQrPairing {
+            isQrPairing = false
         }
     }
 
