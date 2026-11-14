@@ -2,12 +2,11 @@
   <img src="adbLogo.jpg" alt="Universal ADB Control Logo" width="121" height="121" />
   <h1>Universal ADB Control</h1>
   <p><strong>Aplikasi kontrol nirkabel & kabel untuk mengendalikan HP Android dari Mac secara universal</strong></p>
-  <p><em>Seamless Mouse, Keyboard, Layar Terintegrasi & Sinkronisasi Clipboard 2-Arah Berkecepatan Tinggi</em></p>
   <p>
     <img src="https://img.shields.io/badge/Platform-macOS-black?logo=apple" alt="macOS" />
     <img src="https://img.shields.io/badge/Android-11%2B-3DDC84?logo=android&logoColor=white" alt="Android" />
     <img src="https://img.shields.io/badge/Language-Swift%206%20%7C%20ObjC-F05138?logo=swift&logoColor=white" alt="Swift" />
-    <img src="https://img.shields.io/badge/UI-Liquid%20Glass%20%28SwiftUI%29-007AFF" alt="Liquid Glass" />
+    <img src="https://img.shields.io/badge/UI-Liquid%20Glass-007AFF" alt="Liquid Glass" />
     <img src="https://img.shields.io/badge/License-MIT-blue" alt="License" />
   </p>
 </div>
@@ -16,168 +15,63 @@
 
 ## Fitur Utama
 
-- **Desain Liquid Glass Minimalis**: Antarmuka transparan modern menggunakan material *Liquid Glass* native macOS, tanpa badge warna-warni, tanpa dinding teks yang membingungkan, fokus murni pada pengalaman interaksi perangkat.
-- **Layar Android Menyatu Langsung (Unified Studio Window)**:
-  - Layar HP dengan bezel bodi smartphone melengkung, punch-hole camera, dan tombol samping fisik (Volume & Power) terintegrasi langsung di dalam jendela Universal ADB Control (tidak ada jendela terpisah).
-  - Dock kontrol kaca melayang interaktif: Kembali (◀), Beranda (●), Aplikasi Terkini (■), dan tombol putar/henti instan.
-  - Zero Presence: scrcpy terbungkus 100% dan tidak pernah muncul di macOS Dock, App Switcher (`⌘+Tab`), maupun Menu Bar.
-- **Universal Clipboard Sync**: Sinkronisasi clipboard real-time 2 arah (Teks, Gambar, Berkas) antara macOS dan Android via socket TCP berkecepatan tinggi.
-- **Seamless Mouse & Keyboard Control**: Alihkan kendali mouse dan keyboard ke HP Android secara instan dengan pintasan global `⌘ + ⌥ + T` (Command + Option + T).
-- **Optimasi Streaming Wi-Fi Ultra-Rendah Latensi**:
-  - Hardware encoding H.265 (HEVC) hemat bandwidth hingga 50%.
-  - Pembatasan resolusi adaptif (`max-size=1280`) untuk latensi encoding < 4 ms.
-  - Penguncian 60 FPS stabil.
-  - Jitter buffer 15 ms untuk menyerap fluktuasi sinyal nirkabel tanpa lag/patah-patah.
-- **Indikator Metrik Real-Time (FPS & ms)**:
-  - HUD performa Liquid Glass di bar atas yang menampilkan framerate aktual (FPS) dan latensi transmisi jaringan (ms) secara real-time.
-  - Pengukuran latensi native via TCP handshake / ICMP ping tanpa memberatkan thread utama.
-  - Indikator visual status koneksi (hijau, kuning, oranye, merah) yang adaptif dan informatif.
-- **Pairing Nirkabel via QR Code (Android 11+)**: Pindai QR Code langsung dari menu *Opsi Pengembang > Proses debug nirkabel > Pasangkan dengan kode QR* di ponsel Android untuk otentikasi TLS dan koneksi otomatis tanpa repot mengetik alamat IP atau port manual.
-- **Device Management**: Deteksi otomatis perangkat ADB USB & Wi-Fi dengan fitur *one-click connect/disconnect*.
-- **Background Daemon & CLI**: Berjalan stabil di latar belakang via macOS LaunchAgent (`com.universal.adb.control.daemon`).
-
----
-
-## Struktur Proyek & Blueprint Berkas
-
-Setiap berkas dalam arsitektur Universal ADB Control dirancang dengan tanggung jawab modular dan spesifik:
-
-```text
-universal-adb-control/
-├── assets/                             # Branding resmi (logo visual & icon macOS)
-│   ├── adbLogo.jpg                     # Logo asli ADB Android
-│   ├── adbLogo.png                     # Logo format PNG untuk kompatibilitas
-│   └── AppIcon.icns                    # macOS Application Iconset (16px - 1024px)
-├── bin/                                # Biner hasil kompilasi & macOS App Bundle (gitignored)
-├── src/
-│   ├── cli/
-│   │   └── universal-adb-control       # Skrip CLI manajer instalasi & layanan LaunchAgent
-│   ├── daemon/
-│   │   ├── main.swift                  # Titik masuk executable background daemon
-│   │   ├── AdbTransport.swift          # Komunikasi ADB socket & port forwarding TCP
-│   │   ├── ClipboardDaemon.swift       # Mesin sinkronisasi clipboard 2 arah real-time
-│   │   ├── ControlManager.swift        # Pengelola hotkey ⌘⌥T & orkestrator kontrol GUI
-│   │   ├── Models.swift                # Definisi model data, konfigurasi, & logger
-│   │   └── PasteboardManager.swift     # Abstraksi baca/tulis NSPasteboard macOS
-│   ├── frame/
-│   │   └── DeviceFrameOverlay.m        # Dylib injeksi macOS (stealth, layout sync, focus lock)
-│   ├── gui/
-│   │   ├── main.swift                  # Entry point AppKit, Menu Utama sistem, & jendela kaca
-│   │   ├── AppState.swift              # ObservableObject state manager & peluncur display SDK
-│   │   ├── QRCodeHelper.swift          # Generator QR code native CoreImage (CIQRCodeGenerator)
-│   │   ├── LiquidGlass.swift           # Shader & ViewModifier material kaca Liquid Glass
-│   │   └── MainView.swift              # Antarmuka Liquid Glass SwiftUI & mockup smartphone
-│   └── helper/
-│       └── UniversalADBControlDisplay.c# Launcher C mandiri pembungkus scrcpy dengan dylib
-├── build.sh                            # Skrip kompilasi biner modular via clang & swiftc
-├── bundle_app.sh                       # Skrip generator macOS App Bundle (.app)
-└── README.md                           # Dokumentasi & panduan teknis proyek
-```
-
-### Penjelasan Detail Berkas Blueprint
-
-#### 1. Skrip Kompilasi & Bundling (Root)
-- **`build.sh`**: Mengompilasi seluruh komponen native proyek menggunakan `clang` (arsitektur universal `arm64` & `arm64e`) dan `swiftc` (target macOS 26.0) ke folder `bin/`.
-- **`bundle_app.sh`**: Membungkus hasil kompilasi menjadi struktur macOS Application Bundle mandiri (`Universal ADB Control.app`) yang berisi `Info.plist`, executable GUI, `Helpers/UniversalADBControlDisplay.app`, dan framework dylib pendukung.
-
-#### 2. Modul Manajer CLI (`src/cli/`)
-- **`src/cli/universal-adb-control`**: Skrip bash CLI untuk menginstal/menghapus LaunchAgent daemon (`com.universal.adb.control.daemon`), memeriksa status koneksi perangkat ADB, memantau log streaming/clipboard, serta membuka GUI via baris perintah.
-
-#### 3. Modul Background Daemon (`src/daemon/`)
-- **`src/daemon/main.swift`**: Titik masuk (*entry point*) executable daemon latar belakang; menginisialisasi daemon clipboard, menangani sinyal sistem, dan menjalankan run loop.
-- **`src/daemon/AdbTransport.swift`**: Menangani koneksi soket ADB tingkat rendah, port forwarding TCP untuk agen Android, dan pengiriman perintah ADB shell secara andal.
-- **`src/daemon/ClipboardDaemon.swift`**: Mesin sinkronisasi clipboard dua arah berkecepatan tinggi antara macOS (`NSPasteboard`) dan Android (teks, rich text HTML, dan file/gambar).
-- **`src/daemon/ControlManager.swift`**: Menangani pintasan global `⌘ + Option + T` menggunakan Carbon Event Manager, mengorkestrasikan pembukaan aplikasi GUI jika sedang tertutup, dan mengarahkan fokus ke jendela emulator.
-- **`src/daemon/Models.swift`**: Struktur data payload clipboard, parser konfigurasi file `config.conf` (`DaemonConfig`), dan utilitas sistem logging.
-- **`src/daemon/PasteboardManager.swift`**: Membaca dan menulis ke clipboard native macOS (`NSPasteboard`) dengan hashing SHA-256 untuk mencegah *sync echo loop*.
-
-#### 4. Modul Injeksi Frame & Window Overlay (`src/frame/`)
-- **`src/frame/DeviceFrameOverlay.m`**: Dynamic library Objective-C (`libUniversalControlFrame.dylib`) yang disisipkan ke scrcpy via `DYLD_INSERT_LIBRARIES`:
-  - **Stealth Mode**: Men-swizzle `setActivationPolicy:` ke `NSApplicationActivationPolicyAccessory` sehingga scrcpy tidak pernah memunculkan ikon terpisah di Dock atau App Switcher (`⌘+Tab`).
-  - **Sinkronisasi Posisi 60 FPS**: Mengunci ukuran dan koordinat jendela scrcpy tepat di atas mockup layar ponsel pada GUI (`syncEmbeddedWindow`).
-  - **Full-Bleed Clean Display**: Menampilkan layar penuh tanpa notch atau punch-hole yang menghalangi konten.
-  - **Focus Lock & Anti-Leak**: Men-swizzle `canBecomeKeyWindow` dan `canBecomeMainWindow` pada `NSWindow` serta mengaktifkan proses secara instan saat layar diklik (`uac_sendEvent:`) sehingga 100% input keyboard dan trackpad masuk ke Android tanpa bocor ke Mac.
-  - **Pintasan Background**: Mengintersepsi `⌘Q` dan `⌘W` di tingkat Cocoa event loop untuk menghentikan display helper dan menyembunyikan jendela ke background tanpa mematikan aplikasi utama.
-  - **Anti-Standalone Guard**: Menolak peluncuran jendela scrcpy mengambang di luar GUI (memastikan hanya satu layar yang aktif di dalam GUI).
-
-#### 5. Modul Liquid Glass GUI (`src/gui/`)
-- **`src/gui/main.swift`**: Titik masuk aplikasi GUI macOS AppKit (`@main UniversalControlApp` & `AppDelegate`):
-  - Mengonfigurasi `NSApp.mainMenu` lengkap (App, Edit, Window) agar pintasan keyboard native macOS (`⌘Q`, `⌘W`, `⌘C`, `⌘V`, `⌘Z`) aktif di seluruh komponen.
-  - Membangun jendela transparan berlatar material Liquid Glass (`NSVisualEffectView`).
-  - Menjaga aplikasi tetap aktif di background Menu Bar (status item) saat jendela ditutup, dan mendaftarkan hotkey global `⌘⌥T` untuk membangkitkan jendela seketika.
-- **`src/gui/AppState.swift`**: Pusat manajemen state SwiftUI (`ObservableObject`):
-  - Mendeteksi perangkat Android USB & Wi-Fi dan memuat preferensi streaming.
-  - Menghitung koordinat piksel area layar ponsel dan menyimpannya ke `~/.universal-adb-control/host_rect.json`.
-  - Meluncurkan helper display scrcpy dengan parameter koordinat mutlak (`--keyboard=sdk --mouse=sdk`) untuk sinkronisasi kursor 1:1 dan gestur trackpad mulus.
-  - Mengirim tombol fisik Android (Volume Up/Down, Power, Back, Home, Recents) via ADB keyevent.
-- **`src/gui/QRCodeHelper.swift`**: Utilitas generator gambar QR Code native menggunakan `CoreImage` (`CIQRCodeGenerator`) dan rasterisasi CGImage resolusi tajam (pixel-crisp) untuk payload pairing standar Android Wireless Debugging (`WIFI:T:ADB;S:...;P:...;;`).
-- **`src/gui/LiquidGlass.swift`**: Konfigurasi parameter dan render shader Liquid Glass:
-  - Menyediakan `GlassConfig` (`refraction`, `depth`, `frost`, `dispersion`, `splay` skala 0-100) yang dapat diatur pengguna secara langsung.
-  - Komponen latar kaca `LiquidGlassBackground` dan ViewModifier `.liquidGlass(...)` untuk seluruh elemen UI.
-- **`src/gui/MainView.swift`**: Desain antarmuka modern Liquid Glass SwiftUI:
-  - Mockup bodi smartphone proporsional dengan sudut melengkung halus dan tombol fisik samping interaktif.
-  - Dock navigasi bawah bergaya kapsul kaca melayang (Kembali, Beranda, Recents, Mulai/Berhenti).
-  - Komponen penanda geometri (`ScreenAnchor` / `AnchorView`) untuk sinkronisasi posisi layar overlay.
-  - Popover pemilihan perangkat dengan deteksi visual USB / Wi-Fi, pairing kode 6-digit (Android 11+), dan konfigurasi profil streaming.
-
-#### 6. Modul Helper Launcher (`src/helper/`)
-- **`src/helper/UniversalADBControlDisplay.c`**: Binary launcher C ringkas yang dikemas di dalam `UniversalADBControlDisplay.app` untuk menyuntikkan `libUniversalControlFrame.dylib` ke scrcpy secara terisolasi tanpa membuat entri Dock baru.
+- **Layar HP Menyatu (Unified Window)**: Tampilan layar Android terintegrasi langsung di dalam mockup ponsel berdesain Liquid Glass native macOS.
+- **Mouse & Keyboard Universal**: Kendalikan Android menggunakan keyboard dan trackpad Mac via pintasan global `⌘ + ⌥ + T`.
+- **Sinkronisasi Clipboard 2-Arah**: Teks dan file tersinkronisasi otomatis secara instan antara Mac dan Android.
+- **Pairing QR Code & Nirkabel**: Pasangkan perangkat Android 11+ via kode QR atau koneksi Wi-Fi langsung tanpa kabel.
+- **Streaming 60 FPS Rendah Latensi**: Hardware encoding H.264/H.265 dengan HUD metrik FPS dan latensi (ms) real-time.
+- **Rotasi Otomatis**: Orientasi layar dan ukuran jendela beradaptasi otomatis mengikuti orientasi ponsel (Portret & Lanskap).
 
 ---
 
 ## Cara Kompilasi & Menjalankan
 
-### 1. Build Biner & macOS App Bundle
+### Build & Buka Aplikasi
 ```bash
-chmod +x build.sh bundle_app.sh
 ./bundle_app.sh
-```
-
-Aplikasi macOS siap dibuka melalui:
-```bash
 open "bin/Universal ADB Control.app"
 ```
 
-### 2. Menggunakan CLI
+### Menggunakan CLI
 ```bash
-# Cek status layanan daemon & koneksi perangkat
-universal-adb-control status
-
-# Kontrol daemon
-universal-adb-control start
-universal-adb-control stop
-universal-adb-control restart
-
-# Memantau log aktivitas
-universal-adb-control logs
-
-# Membuka aplikasi GUI
-universal-adb-control gui
+universal-adb-control status    # Cek status koneksi perangkat
+universal-adb-control start     # Jalankan background daemon
+universal-adb-control stop      # Hentikan background daemon
+universal-adb-control logs      # Pantau log aktivitas
 ```
-
-### 3. Pintasan Global Kontrol Layar Penuh
-- Tekan **`⌘ + Option + T`** di mana saja untuk mengalihkan mouse dan keyboard ke HP Android.
-- Tekan **`⌘ + Option + T`** kembali untuk menyembunyikan kontrol dan mengembalikan kursor ke layar Mac.
 
 ---
 
-## Konfigurasi Kinerja (`config.conf`)
+## Pintasan Keyboard
 
-Konfigurasi disimpan di `~/.universal-adb-control/config.conf` atau dapat diatur via tab **Pengaturan** di GUI:
+| Pintasan | Fungsi |
+| :--- | :--- |
+| `⌘ + ⌥ + T` | Mulai / Berhenti streaming & alihkan kontrol |
+| `⌘ + Q` / `⌘ + W` | Keluar dari aplikasi / sembunyikan jendela |
 
-```conf
-# Universal ADB Control Configuration
-ADB=/opt/homebrew/bin/adb
-DEVICE=
-SYNC_INTERVAL_MS=300
-VIDEO_BITRATE=3M
-MAX_SIZE=1280
-MAX_FPS=60
-VIDEO_BUFFER_MS=15
-VIDEO_CODEC=h265
+---
+
+## Struktur Berkas
+
+```text
+universal-adb-control/
+├── assets/                             # Aset logo resmi & icon macOS (.icns)
+│   ├── adbLogo.jpg                     # Logo asli ADB Android
+│   ├── adbLogo.png                     # Logo format PNG
+│   └── AppIcon.icns                    # Iconset aplikasi (.app)
+├── src/
+│   ├── cli/                            # Skrip command-line universal-adb-control
+│   ├── daemon/                         # Background daemon & sinkronisasi clipboard
+│   ├── frame/                          # Dylib penempel layar scrcpy (DeviceFrameOverlay)
+│   ├── gui/                            # Antarmuka Liquid Glass SwiftUI & manajemen state
+│   └── helper/                         # Helper launcher aplikasi display
+├── build.sh                            # Skrip kompilasi biner (swiftc & clang)
+├── bundle_app.sh                       # Skrip pembuatan macOS App Bundle (.app)
+└── README.md                           # Dokumentasi proyek
 ```
 
 ---
 
 ## Lisensi
-MIT License
+
+Didistribusikan di bawah lisensi MIT.
