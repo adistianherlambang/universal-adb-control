@@ -57,9 +57,12 @@ public final class ClipboardDaemon {
     }
 
     private func scheduleReconnect() {
-        reconnectTimer?.invalidate()
-        reconnectTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-            self?.connectToDevice()
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.reconnectTimer?.invalidate()
+            self.reconnectTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+                self?.connectToDevice()
+            }
         }
     }
 

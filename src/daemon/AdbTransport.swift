@@ -73,8 +73,41 @@ public final class AdbTransport {
         }
     }
 
+    private func autoConnectMdnsIfPossible() {
+        let task = Process()
+        task.launchPath = config.adbPath
+        task.arguments = ["mdns", "services"]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = Pipe()
+        try? task.run()
+        task.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else { return }
+
+        for line in output.components(separatedBy: .newlines) {
+            let cols = line.split(whereSeparator: { $0.isWhitespace })
+            if cols.count >= 3 {
+                let svc = String(cols[1])
+                let addr = String(cols[2])
+                if svc.contains("_adb-tls-connect") && addr.contains(":") {
+                    let connTask = Process()
+                    connTask.launchPath = self.config.adbPath
+                    connTask.arguments = ["connect", addr]
+                    try? connTask.run()
+                    connTask.waitUntilExit()
+                    return
+                }
+            }
+        }
+    }
+
     public func selectTargetDevice() -> String? {
-        let devices = discoverDevices().filter { $0.state == "device" }
+        var devices = discoverDevices().filter { $0.state == "device" }
+        if devices.isEmpty {
+            autoConnectMdnsIfPossible()
+            devices = discoverDevices().filter { $0.state == "device" }
+        }
         if devices.isEmpty { return nil }
 
         if let pref = config.preferredDevice, !pref.isEmpty {
@@ -130,12 +163,13 @@ public final class AdbTransport {
             return false
         }
 
-        // Kill previous instances
+        // Kill previous instances of AndroidClipboardAgent
         let killTask = Process()
         killTask.launchPath = config.adbPath
-        killTask.arguments = ["-s", serial, "shell", "pkill -9 -f clipboard_agent.dex"]
+        killTask.arguments = ["-s", serial, "shell", "pkill -9 -f AndroidClipboardAgent; pkill -9 -f clipboard_agent.dex"]
         try? killTask.run()
         killTask.waitUntilExit()
+        Thread.sleep(forTimeInterval: 0.2)
 
         // Sembunyikan on-screen keyboard saat physical/UHID keyboard aktif
         let imeTask = Process()
