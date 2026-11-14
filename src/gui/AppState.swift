@@ -101,7 +101,7 @@ public final class AppState: ObservableObject {
     @Published public var currentFps: Int = 60
     @Published public var currentLatencyMs: Int = 0
     @Published public var isQrPairing: Bool = false
-    @Published public var qrPairingStatus: String = "Menunggu pindaian..."
+    @Published public var qrPairingStatus: String = "Pindai dari Android"
     // Saat popover terbuka, layar HP disembunyikan sementara agar tidak menutupi popover
     @Published public var overlayOpen = false { didSet { writeLiveGeometry() } }
 
@@ -844,7 +844,7 @@ public final class AppState: ObservableObject {
     public func startQRPairing(serviceName: String, code: String, completion: @escaping (Bool) -> Void) {
         stopQRPairing()
         isQrPairing = true
-        qrPairingStatus = "Menunggu pindaian..."
+        qrPairingStatus = "Pindai dari Android"
 
         let adb = adbPath
         let work = DispatchWorkItem { [weak self] in
@@ -874,14 +874,14 @@ public final class AppState: ObservableObject {
 
                 if let endpoint = candidateEndpoint {
                     DispatchQueue.main.async {
-                        self.qrPairingStatus = "Memasangkan perangkat..."
+                        self.qrPairingStatus = "Memasangkan..."
                     }
 
                     let pairOutput = self.runShell("\(adb) pair \(endpoint) \(code)")
                     if pairOutput.contains("Successfully paired to") {
                         paired = true
                         DispatchQueue.main.async {
-                            self.qrPairingStatus = "Berhasil dipasangkan! Menghubungkan..."
+                            self.qrPairingStatus = "Menghubungkan..."
                         }
                         Thread.sleep(forTimeInterval: 0.8)
 
@@ -926,7 +926,7 @@ public final class AppState: ObservableObject {
             DispatchQueue.main.async {
                 if self.isQrPairing && !paired {
                     self.isQrPairing = false
-                    self.qrPairingStatus = "Waktu habis, ketuk untuk perbarui"
+                    self.qrPairingStatus = "Kedaluwarsa"
                     completion(false)
                 }
             }

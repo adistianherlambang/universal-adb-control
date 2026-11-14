@@ -335,7 +335,7 @@ private struct SideKey: View {
 // MARK: - Popover perangkat
 
 private enum ConnectionMode: String, CaseIterable, Identifiable {
-    case qr = "QR Code"
+    case qr = "QR"
     case direct = "IP"
     case pair = "Kode"
 
@@ -504,60 +504,58 @@ private struct DevicePopover: View {
     }
 
     private var qrSection: some View {
-        VStack(spacing: 9) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.white)
-                    .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+        let isExpired = !state.isQrPairing && state.qrPairingStatus == "Kedaluwarsa"
 
-                if let img = qrImage {
-                    Image(nsImage: img)
-                        .interpolation(.none)
-                        .resizable()
-                        .scaledToFit()
-                        .padding(8)
-                } else {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                }
-            }
-            .frame(width: 148, height: 148)
+        return VStack(spacing: 10) {
+            Button(action: regenerateQR) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.white)
+                        .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
 
-            VStack(spacing: 3) {
-                HStack(spacing: 6) {
-                    if state.isQrPairing {
-                        ProgressView()
-                            .scaleEffect(0.55)
-                            .frame(width: 12, height: 12)
+                    if let img = qrImage {
+                        Image(nsImage: img)
+                            .interpolation(.none)
+                            .resizable()
+                            .scaledToFit()
+                            .padding(10)
+                            .opacity(isExpired ? 0.22 : 1.0)
                     } else {
-                        Circle()
-                            .fill(Color.secondary.opacity(0.5))
-                            .frame(width: 6, height: 6)
+                        ProgressView()
+                            .scaleEffect(0.8)
                     }
 
-                    Text(state.qrPairingStatus)
-                        .font(.system(size: 10.5, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-
-                    Button(action: regenerateQR) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.secondary)
+                    if isExpired {
+                        ZStack {
+                            Circle()
+                                .fill(Color.black.opacity(0.65))
+                                .frame(width: 40, height: 40)
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .help("Buat kode baru")
                 }
-
-                Text("Opsi Pengembang > Debug Nirkabel > Pindai QR")
-                    .font(.system(size: 9.5))
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
+                .frame(width: 152, height: 152)
+                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
-            .padding(.top, 1)
+            .buttonStyle(.plain)
+            .help("Opsi Pengembang > Debug Nirkabel > Pindai kode QR (ketuk untuk perbarui)")
+
+            HStack(spacing: 6) {
+                if state.isQrPairing {
+                    ProgressView()
+                        .scaleEffect(0.55)
+                        .frame(width: 12, height: 12)
+                }
+                Text(isExpired ? "Ketuk QR untuk perbarui" : state.qrPairingStatus)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
     }
 
     private func regenerateQR() {
